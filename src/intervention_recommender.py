@@ -14,7 +14,7 @@ import logging
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 
-from src.gemini_client import GeminiClient
+from src.llm_client_base import BaseLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -172,14 +172,14 @@ class InterventionRecommender:
     - Gemini LLM for novel interventions (flexible, comprehensive)
     """
 
-    def __init__(self, gemini_client: GeminiClient):
+    def __init__(self, llm_client: BaseLLMClient):
         """
         Initialize recommender.
 
         Args:
-            gemini_client: Configured Gemini API client
+            llm_client: Configured LLM API client
         """
-        self.gemini_client = gemini_client
+        self.llm_client = llm_client
 
     def generate_intervention_rationale(
         self,
@@ -324,7 +324,7 @@ Return JSON format:
 """
 
         try:
-            response = self.gemini_client.call_with_retry(
+            response = self.llm_client.call_with_retry(
                 prompt,
                 temperature=0.3,
                 system_instruction=system_instruction
@@ -412,7 +412,7 @@ def generate_intervention_rationale(
     intervention_name: str,
     outcome: str,
     sensitive_attr: str,
-    gemini_client: GeminiClient,
+    llm_client: BaseLLMClient,
     context: str = "medicare_high_cost",
     accuracy_tradeoff: Optional[float] = None
 ) -> InterventionRationale:
@@ -423,14 +423,14 @@ def generate_intervention_rationale(
         intervention_name: Intervention method name
         outcome: Clinical outcome
         sensitive_attr: Protected attribute
-        gemini_client: Gemini API client
+        llm_client: LLM API client
         context: Clinical context
         accuracy_tradeoff: Accuracy reduction
 
     Returns:
         InterventionRationale with safety assessment
     """
-    recommender = InterventionRecommender(gemini_client)
+    recommender = InterventionRecommender(llm_client)
     return recommender.generate_intervention_rationale(
         intervention_name,
         outcome,

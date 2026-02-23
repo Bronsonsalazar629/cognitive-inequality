@@ -18,7 +18,7 @@ from dataclasses import dataclass, asdict
 import pandas as pd
 import numpy as np
 
-from src.gemini_client import GeminiClient
+from src.llm_client_base import BaseLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -150,8 +150,8 @@ def apply_intervention(df: pd.DataFrame, sensitive_attr: str, outcome: str) -> t
 class CodeGenerator:
     """Generates and validates fairness intervention code."""
 
-    def __init__(self, gemini_client: GeminiClient):
-        self.gemini_client = gemini_client
+    def __init__(self, llm_client: BaseLLMClient = None):
+        self.llm_client = llm_client
 
     def generate_intervention_code(
         self,
@@ -164,7 +164,7 @@ class CodeGenerator:
         """Generate and validate intervention code."""
         logger.info(f"Generating code for {intervention_name}")
 
-        if self.gemini_client is None:
+        if self.llm_client is None:
             if use_template_fallback and intervention_name in CODE_TEMPLATES:
                 logger.info(f"  Using template fallback (no LLM client)")
                 code = CODE_TEMPLATES[intervention_name]
@@ -214,7 +214,7 @@ Function signature: def apply_intervention(df: pd.DataFrame, sensitive_attr: str
 Return ONLY Python code (no markdown, no explanations).
 """
 
-        response = self.gemini_client.call_with_retry(prompt, temperature=0.2, system_instruction=system_instruction)
+        response = self.llm_client.call_with_retry(prompt, temperature=0.0, system_instruction=system_instruction)
 
         code = response.strip()
         if code.startswith("```python"):
@@ -241,7 +241,7 @@ Return ONLY Python code (no markdown, no explanations).
         passes_tests = False
         implements_intervention = False
 
-        if self.gemini_client is None:
+        if self.llm_client is None:
             logger.info("  Skipping functional tests (fallback mode - avoiding package import freeze)")
             passes_tests = True
             implements_intervention = self._verify_intervention(code, intervention_name)
@@ -266,7 +266,7 @@ Return ONLY Python code (no markdown, no explanations).
         try:
             ast.parse(code)
             return True
-        except:
+        except SyntaxError:
             return False
 
     def _validate_security(self, code: str) -> bool:
@@ -321,7 +321,7 @@ Return ONLY Python code (no markdown, no explanations).
                         dependencies.add(alias.name.split('.')[0])
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     dependencies.add(node.module.split('.')[0])
-        except:
+        except SyntaxError:
             pass
         return sorted(list(dependencies))
 

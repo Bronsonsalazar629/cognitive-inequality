@@ -372,18 +372,25 @@ class PCAlgorithmClinical:
         logger.info(f"  [OK] Added confidence intervals to {len(edges_with_metadata)} edges")
         return edges_with_metadata
 
-    def _compute_partial_correlation(self, var1: str, var2: str) -> float:
-        """Compute partial correlation of var1 and var2 (conditioning on others)."""
+    def _compute_partial_correlation(self, var1: str, var2: str, data: pd.DataFrame = None) -> float:
+        """Compute partial correlation of var1 and var2 (conditioning on others).
+
+        Args:
+            var1: First variable name
+            var2: Second variable name
+            data: DataFrame to use (defaults to self.data if None)
+        """
         from sklearn.linear_model import LinearRegression
 
-        other_vars = [v for v in self.data.columns if v not in [var1, var2]]
+        df = data if data is not None else self.data
+        other_vars = [v for v in df.columns if v not in [var1, var2]]
 
         if len(other_vars) == 0:
-            return self.data[[var1, var2]].corr().iloc[0, 1]
+            return df[[var1, var2]].corr().iloc[0, 1]
 
-        X_other = self.data[other_vars].values
-        y1 = self.data[var1].values
-        y2 = self.data[var2].values
+        X_other = df[other_vars].values
+        y1 = df[var1].values
+        y2 = df[var2].values
 
         model1 = LinearRegression().fit(X_other, y1)
         res1 = y1 - model1.predict(X_other)
@@ -404,9 +411,9 @@ class PCAlgorithmClinical:
 
         for _ in range(self.n_bootstrap):
             idx = np.random.choice(len(self.data), len(self.data), replace=True)
-            sample = self.data.iloc[idx]
+            sample = self.data.iloc[idx].reset_index(drop=True)
 
-            partial_corr = self._compute_partial_correlation(var1, var2)
+            partial_corr = self._compute_partial_correlation(var1, var2, data=sample)
             bootstrap_corrs.append(partial_corr)
 
         bootstrap_corrs = np.array(bootstrap_corrs)
@@ -595,18 +602,59 @@ class PCAlgorithmClinical:
 
     def _add_robustness_analysis(self, bias_pathways: List[BiasPathway]) -> List[BiasPathway]:
         """
-        Add robustness metrics using Cinelli & Hazlett (2020) sensitivity analysis.
+        Add robustness metrics via partial R-squared sensitivity analysis.
 
-        Computes how much unmeasured confounding would be needed to invalidate
-        each bias pathway.
+        For each edge in a pathway, computes the partial R-squared (proportion
+        of variance in the target explained by the source after conditioning on
+        all other variables). The pathway robustness is the minimum partial
+        R-squared across edges — the weakest link. Higher values mean more
+        unmeasured confounding would be needed to invalidate the pathway.
         """
-        logger.info("\n-> Computing sensitivity to unmeasured confounding...")
+        from sklearn.linear_model import LinearRegression
 
-        for i, pathway in enumerate(bias_pathways):
-            robustness = 1.0 - (1.0 / len(pathway.path))
-            pathway.sensitivity_robustness = robustness
+        logger.info("\n-> Computing partial R-squared sensitivity analysis...")
 
-        logger.info(f"  [OK] Added sensitivity analysis to {len(bias_pathways)} pathways")
+        for pathway in bias_pathways:
+            edge_strengths = []
+            for j in range(len(pathway.path) - 1):
+                source = pathway.path[j]
+                target = pathway.path[j + 1]
+
+                if source not in self.data.columns or target not in self.data.columns:
+                    edge_strengths.append(0.0)
+                    continue
+
+                other_vars = [v for v in self.data.columns
+                              if v not in [source, target]]
+
+                if len(other_vars) == 0:
+                    r = self.data[[source, target]].corr().iloc[0, 1]
+                    edge_strengths.append(r ** 2)
+                    continue
+
+                X_others = self.data[other_vars].values
+                y_target = self.data[target].values
+
+                # R-squared without the source variable
+                model_reduced = LinearRegression().fit(X_others, y_target)
+                ss_res_reduced = np.sum((y_target - model_reduced.predict(X_others)) ** 2)
+
+                # R-squared with the source variable
+                X_full = self.data[other_vars + [source]].values
+                model_full = LinearRegression().fit(X_full, y_target)
+                ss_res_full = np.sum((y_target - model_full.predict(X_full)) ** 2)
+
+                ss_total = np.sum((y_target - y_target.mean()) ** 2)
+                if ss_total == 0:
+                    edge_strengths.append(0.0)
+                    continue
+
+                partial_r2 = (ss_res_reduced - ss_res_full) / ss_res_reduced
+                edge_strengths.append(max(0.0, partial_r2))
+
+            pathway.sensitivity_robustness = min(edge_strengths) if edge_strengths else 0.0
+
+        logger.info(f"  [OK] Added partial R-squared sensitivity to {len(bias_pathways)} pathways")
         return bias_pathways
 
     def _log_results(

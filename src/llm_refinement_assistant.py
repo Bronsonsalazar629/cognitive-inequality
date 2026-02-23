@@ -29,11 +29,11 @@ import networkx as nx
 import yaml
 
 try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
+    from .gemini_client import create_smart_llm_client
+    LLM_CLIENT_AVAILABLE = True
 except ImportError:
-    GEMINI_AVAILABLE = False
-    logging.warning("google-generativeai not installed. LLM features disabled.")
+    LLM_CLIENT_AVAILABLE = False
+    logging.warning("LLM client not available. LLM features disabled.")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -67,7 +67,6 @@ class LLMPrompt:
         return {
             'task': self.task.value,
             'expert_context': self.expert_context,
-            'explicit_task': self.explicit_task,
             'data_hash': self.data_hash,
             'timestamp': self.timestamp
         }
@@ -171,29 +170,24 @@ class LLMRefinementAssistant:
         self.log_dir = log_dir
 
         config = load_config()
-        self.api_key = config.get('gemini_api_key')
-        self.model_name = config.get('gemini_model', 'models/gemini-2.0-flash')
         self.llm_enabled = config.get('enable_llm', False)
 
         os.makedirs(log_dir, exist_ok=True)
 
-        self.model = None
-        if GEMINI_AVAILABLE and self.llm_enabled and self.api_key:
+        self.llm_client = None
+        if LLM_CLIENT_AVAILABLE and self.llm_enabled:
             try:
-                genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel(self.model_name)
-                logger.info(f"LLM ENABLED: {self.model_name}, temp={temperature}, seed={seed}")
+                self.llm_client = create_smart_llm_client()
+                logger.info(f"LLM ENABLED: {self.llm_client.provider_name} ({self.llm_client.model})")
             except Exception as e:
-                logger.error(f"Failed to initialize Gemini: {e}")
-                self.model = None
+                logger.error(f"Failed to initialize LLM client: {e}")
+                self.llm_client = None
         else:
             reasons = []
-            if not GEMINI_AVAILABLE:
-                reasons.append("google-generativeai not installed")
+            if not LLM_CLIENT_AVAILABLE:
+                reasons.append("LLM client not available")
             if not self.llm_enabled:
                 reasons.append("enable_llm=false in config")
-            if not self.api_key:
-                reasons.append("no API key in config")
             logger.warning(f"LLM DISABLED: {', '.join(reasons)}")
 
         self.audit_log: List[LLMAuditEntry] = []
@@ -208,8 +202,8 @@ class LLMRefinementAssistant:
         Returns:
             LLM response with metadata
         """
-        if self.model is None:
-            raise RuntimeError("LLM not available. Set enable_llm=true in config/api_keys.yaml")
+        if self.llm_client is None:
+            raise RuntimeError("LLM not available. Set enable_llm=true and DEEPSEEK_API_KEY env var")
 
         full_prompt = f"""You are a research assistant helping with clinical fairness analysis.
 
@@ -217,7 +211,7 @@ CONTEXT:
 {prompt.expert_context}
 
 TASK:
-{prompt.explicit_task}
+{prompt.task.value}
 
 CONSTRAINTS:
 - Only suggest changes with high confidence (>= 0.7)
@@ -230,22 +224,15 @@ RESPONSE FORMAT:
 Provide your suggestions in a structured, parseable format.
 """
 
-        generation_config = genai.GenerationConfig(
-            temperature=self.temperature,
-            top_p=1.0,
-            top_k=1,
-            max_output_tokens=2048
-        )
-
-        response = self.model.generate_content(
+        response_text = self.llm_client.call_with_retry(
             full_prompt,
-            generation_config=generation_config
+            temperature=self.temperature
         )
 
         return LLMResponse(
             prompt=prompt,
-            raw_response=response.text,
-            model_version=self.model_name,
+            raw_response=response_text,
+            model_version=self.llm_client.model,
             temperature=self.temperature,
             seed=self.seed,
             timestamp=datetime.now().isoformat()

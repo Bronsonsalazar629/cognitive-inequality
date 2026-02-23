@@ -233,8 +233,8 @@ def create_bootstrap_violin_plots(output_path):
     """
     Create violin plots showing bootstrap distributions for each method.
 
-    Requires re-running bootstrap to get raw distributions.
-    For now, we'll create a simulation based on the CI results.
+    Uses actual bootstrap samples from CI computation when available,
+    falls back to parametric approximation only if raw samples not stored.
     """
     logger.info("Creating bootstrap distribution violin plots...")
 
@@ -259,15 +259,23 @@ def create_bootstrap_violin_plots(output_path):
         for method_name, results in ci_results.items():
             metric_data = results[metric_key]
 
-            mean = metric_data['mean']
-            std = metric_data['std']
-
-            simulated_samples = np.random.normal(mean, std, 1000)
+            # Use actual bootstrap samples if available
+            if 'bootstrap_samples' in metric_data:
+                samples = np.array(metric_data['bootstrap_samples'])
+            else:
+                # Fallback: parametric approximation (clearly logged)
+                logger.warning(
+                    f"No raw bootstrap samples for {method_name}/{metric_key}. "
+                    "Re-run add_confidence_intervals_to_benchmarks.py to store them."
+                )
+                samples = np.random.normal(
+                    metric_data['mean'], metric_data['std'], 1000
+                )
 
             if metric_key in ['fnr_disparity', 'dp_difference', 'equalized_odds']:
-                simulated_samples = np.clip(simulated_samples, 0, None)
+                samples = np.clip(samples, 0, None)
 
-            data_for_violin.append(simulated_samples)
+            data_for_violin.append(samples)
             labels.append(method_name)
 
         parts = ax.violinplot(data_for_violin, positions=range(len(labels)),

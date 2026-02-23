@@ -13,7 +13,6 @@ import time
 import json
 import hashlib
 from pathlib import Path
-from google import genai
 import yaml
 import re
 
@@ -32,48 +31,40 @@ def _load_api_config() -> Dict[str, Any]:
         logger.warning(f"Could not load API config: {e}")
         return {}
 
-def _init_gemini() -> Optional[Any]:
-    """Initialize Gemini API client with error handling."""
-    config = _load_api_config()
-    api_key = config.get('gemini_api_key')
-
-    if not api_key or not config.get('enable_llm', False):
-        logger.info("Gemini API not configured or disabled")
-        return None
-
+def _init_smart_llm_client() -> Optional[Any]:
+    """Initialize smart LLM client with auto-selection between DeepSeek and Gemini."""
     try:
-        client = genai.Client(api_key=api_key)
-        logger.info("Gemini API initialized successfully")
+        from .gemini_client import create_smart_llm_client
+        client = create_smart_llm_client()
+        logger.info(f"Smart LLM client initialized: {client.get_provider_name()}")
         return client
     except Exception as e:
-        logger.error(f"Failed to initialize Gemini API: {e}")
+        logger.error(f"Failed to initialize smart LLM client: {e}")
         return None
 
-def _call_gemini_with_retry(
+def _call_llm_with_retry(
     client: Any,
     prompt: str,
     max_retries: int = 3
 ) -> Optional[str]:
-    """Call Gemini API with exponential backoff retry logic."""
-    config = _load_api_config()
-    model_name = config.get('gemini_model', 'gemini-1.5-flash')
-
+    """Call LLM API with exponential backoff retry logic using smart client."""
+    
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt
+            response = client.call_with_retry(
+                prompt,
+                temperature=0.0
             )
-            if response and response.text:
-                return response.text
-            logger.warning(f"Empty response from Gemini (attempt {attempt + 1}/{max_retries})")
+            if response:
+                return response
+            logger.warning(f"Empty response from LLM (attempt {attempt + 1}/{max_retries})")
         except Exception as e:
             wait_time = 2 ** attempt
-            logger.warning(f"Gemini API error (attempt {attempt + 1}/{max_retries}): {e}")
+            logger.warning(f"LLM API error (attempt {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(wait_time)
 
-    logger.error("All Gemini API retry attempts failed")
+    logger.error("All LLM API retry attempts failed")
     return None
 
 def _get_cache_key(data: pd.DataFrame, sensitive_attr: str, outcome: str) -> str:
@@ -181,7 +172,7 @@ class CausalAnalyzer:
         self.protected_attr = protected_attr
         self.outcome = outcome
         self.causal_graph = known_graph
-        self.gemini_client = _init_gemini()
+        self.llm_client = _init_smart_llm_client()
 
     def infer_causal_graph(
         self,
@@ -189,7 +180,7 @@ class CausalAnalyzer:
         llm_enhanced: bool = True
     ) -> Dict[str, Any]:
         """
-        Infer causal graph structure from data using Gemini 3.
+        Infer causal graph structure from data using smart LLM client (DeepSeek/Gemini).
 
         Args:
             use_cache: Whether to use cached results
@@ -212,7 +203,7 @@ class CausalAnalyzer:
 
         base_graph = _create_default_graph(self.data, self.protected_attr, self.outcome)
 
-        if not llm_enhanced or not self.gemini_client:
+        if not llm_enhanced or not self.llm_client:
             explanation = self._generate_basic_explanation(base_graph)
             result = {'graph': base_graph, 'llm_explanation': explanation}
             self.causal_graph = base_graph
@@ -226,7 +217,7 @@ class CausalAnalyzer:
 
             return result
 
-        logger.info("Refining causal graph with Gemini 3")
+        logger.info(f"Refining causal graph with {self.llm_client.get_provider_name()}")
 
         variables = list(self.data.columns)
         prompt = f"""You are a clinical AI ethicist and causal inference expert.
@@ -251,7 +242,7 @@ digraph {{
 
 Return only the DOT format, no additional text."""
 
-        response = _call_gemini_with_retry(self.gemini_client, prompt)
+        response = _call_llm_with_retry(self.llm_client, prompt)
 
         if response:
             refined_graph = _parse_dot_to_graph(response)
@@ -271,7 +262,7 @@ Provide a 3-sentence explanation focusing on:
 
 Be concise and technical."""
 
-                explanation = _call_gemini_with_retry(self.gemini_client, explanation_prompt)
+                explanation = _call_llm_with_retry(self.llm_client, explanation_prompt)
                 if not explanation:
                     explanation = self._generate_basic_explanation(refined_graph)
 

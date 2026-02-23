@@ -99,9 +99,9 @@ def main():
 
     logger.info(f"   Prepared {len(df_clean)} samples for analysis")
 
-    logger.info("\nStep 3: Initializing Gemini client...")
+    logger.info("\nStep 3: Initializing LLM client...")
 
-    gemini_client = None
+    llm_client = None
 
     try:
         from src.gemini_client import create_smart_llm_client
@@ -194,11 +194,9 @@ def main():
     logger.info("  3. Check llm_logs/ for reproducibility verification")
     logger.info("  4. Share results with clinical stakeholders")
 
-    if gemini_client is None:
+    if llm_client is None:
         logger.info("\n NOTE: This report was generated using fallback mode")
-        logger.info("  To get LLM-enhanced narratives:")
-        logger.info("  - Use Python 3.11 or 3.12 (currently using Python 3.13)")
-        logger.info("  - Or wait for google-generativeai to support Python 3.13")
+        logger.info("  To get LLM-enhanced narratives, set DEEPSEEK_API_KEY env var")
 
 if __name__ == "__main__":
     main()

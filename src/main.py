@@ -62,7 +62,7 @@ class FairnessPipeline:
         self.bias_detector = BiasDetector([sensitive_attr])
         self.intervention_engine = InterventionEngine()
         self.code_generator = CodeGenerator(
-            api_key=self.config.get('gemini_api_key')
+            api_key=self.config.get('deepseek_api_key')
         )
 
     def _load_config(self, config_path: str) -> Dict[str, Any]:
@@ -266,10 +266,11 @@ def train_demo_model(data: pd.DataFrame, test_size: float = 0.3):
     data['insurance_encoded'] = le_insurance.fit_transform(data['insurance_type'])
 
     feature_cols = [
-        'age', 'race_encoded', 'gender_encoded', 'creatinine_level',
+        'age', 'gender_encoded', 'creatinine_level',
         'chronic_conditions', 'insurance_encoded', 'prior_visits',
         'distance_to_hospital'
     ]
+    # Keep 'race' column for fairness evaluation but exclude race_encoded from model features
     X = data[feature_cols + ['race']]
     y = data['referral']
 

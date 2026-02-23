@@ -191,7 +191,8 @@ def compute_fairness_with_confidence_intervals(
     protected: np.ndarray,
     n_bootstrap: int = 1000,
     confidence_level: float = 0.95,
-    random_seed: int = 42
+    random_seed: int = 42,
+    return_raw_samples: bool = False
 ) -> Dict[str, Dict[str, float]]:
     """
     Compute fairness metrics with bootstrap confidence intervals.
@@ -205,6 +206,8 @@ def compute_fairness_with_confidence_intervals(
         n_bootstrap: Number of bootstrap iterations
         confidence_level: Confidence level (default 0.95 for 95% CI)
         random_seed: Random seed for reproducibility
+        return_raw_samples: If True, include raw bootstrap samples in results
+            under 'bootstrap_samples' key for each metric
 
     Returns:
         Dictionary with structure:
@@ -213,7 +216,8 @@ def compute_fairness_with_confidence_intervals(
                 'mean': 0.022,
                 'ci_lower': 0.018,
                 'ci_upper': 0.026,
-                'std': 0.002
+                'std': 0.002,
+                'bootstrap_samples': [...]  # only if return_raw_samples=True
             },
             'dp_difference': {...},
             'accuracy': {...},
@@ -269,14 +273,17 @@ def compute_fairness_with_confidence_intervals(
     final_results = {}
 
     for metric_name, values in bootstrap_results.items():
-        values = np.array(values)
+        values_arr = np.array(values)
 
         final_results[metric_name] = {
-            'mean': np.mean(values),
-            'ci_lower': np.percentile(values, (alpha / 2) * 100),
-            'ci_upper': np.percentile(values, (1 - alpha / 2) * 100),
-            'std': np.std(values),
+            'mean': float(np.mean(values_arr)),
+            'ci_lower': float(np.percentile(values_arr, (alpha / 2) * 100)),
+            'ci_upper': float(np.percentile(values_arr, (1 - alpha / 2) * 100)),
+            'std': float(np.std(values_arr)),
         }
+
+        if return_raw_samples:
+            final_results[metric_name]['bootstrap_samples'] = values
 
     logger.info("Bootstrap CI computation complete")
 
@@ -366,6 +373,114 @@ def compare_methods_with_ci(
             }
 
     return comparisons
+
+def permutation_test_methods(
+    methods_results: Dict[str, Dict],
+    metric_name: str = 'fnr_disparity',
+    n_permutations: int = 10000,
+    correction: str = 'bonferroni',
+    alpha: float = 0.05
+) -> Dict[str, Dict]:
+    """
+    Permutation-based significance testing between fairness methods.
+
+    More rigorous than CI overlap: directly tests H0 that two methods
+    produce the same metric value using bootstrap sample differences.
+
+    Args:
+        methods_results: Dict mapping method name to CI results.
+            Each method must have 'bootstrap_samples' under metric_name.
+        metric_name: Which metric to compare
+        n_permutations: Number of permutation iterations
+        correction: Multiple testing correction ('bonferroni', 'fdr', or 'none')
+        alpha: Significance level before correction
+
+    Returns:
+        Dict of pairwise comparisons with:
+        - p_value: permutation p-value
+        - p_value_corrected: corrected p-value
+        - significant: whether difference is significant after correction
+        - observed_diff: observed difference in means
+        - effect_size: Cohen's d effect size
+    """
+    method_names = list(methods_results.keys())
+    comparisons = {}
+    p_values = []
+    comparison_keys = []
+
+    for i, method_a in enumerate(method_names):
+        for method_b in method_names[i + 1:]:
+            data_a = methods_results[method_a][metric_name]
+            data_b = methods_results[method_b][metric_name]
+
+            # Use bootstrap samples if available, otherwise approximate
+            if 'bootstrap_samples' in data_a and 'bootstrap_samples' in data_b:
+                samples_a = np.array(data_a['bootstrap_samples'])
+                samples_b = np.array(data_b['bootstrap_samples'])
+            else:
+                logger.warning(
+                    f"No bootstrap samples for {method_a} or {method_b}. "
+                    "Using parametric approximation."
+                )
+                samples_a = np.random.normal(data_a['mean'], data_a['std'], 1000)
+                samples_b = np.random.normal(data_b['mean'], data_b['std'], 1000)
+
+            observed_diff = abs(data_a['mean'] - data_b['mean'])
+
+            # Pool samples and permute
+            n_a = len(samples_a)
+            pooled = np.concatenate([samples_a, samples_b])
+
+            count_extreme = 0
+            for _ in range(n_permutations):
+                np.random.shuffle(pooled)
+                perm_diff = abs(pooled[:n_a].mean() - pooled[n_a:].mean())
+                if perm_diff >= observed_diff:
+                    count_extreme += 1
+
+            p_value = (count_extreme + 1) / (n_permutations + 1)
+
+            # Cohen's d effect size
+            pooled_std = np.sqrt((samples_a.std() ** 2 + samples_b.std() ** 2) / 2)
+            effect_size = observed_diff / pooled_std if pooled_std > 0 else 0.0
+
+            key = f"{method_a}_vs_{method_b}"
+            comparisons[key] = {
+                'p_value': p_value,
+                'observed_diff': float(data_a['mean'] - data_b['mean']),
+                'abs_diff': float(observed_diff),
+                'effect_size': float(effect_size),
+                'method_a_mean': data_a['mean'],
+                'method_b_mean': data_b['mean'],
+            }
+            p_values.append(p_value)
+            comparison_keys.append(key)
+
+    # Multiple testing correction
+    n_tests = len(p_values)
+    if correction == 'bonferroni':
+        corrected_p = [min(p * n_tests, 1.0) for p in p_values]
+    elif correction == 'fdr':
+        # Benjamini-Hochberg FDR
+        sorted_indices = np.argsort(p_values)
+        corrected_p = [0.0] * n_tests
+        for rank, idx in enumerate(sorted_indices, 1):
+            corrected_p[idx] = min(p_values[idx] * n_tests / rank, 1.0)
+        # Enforce monotonicity
+        for j in range(n_tests - 2, -1, -1):
+            idx = sorted_indices[j]
+            idx_next = sorted_indices[j + 1]
+            corrected_p[idx] = min(corrected_p[idx], corrected_p[idx_next])
+    else:
+        corrected_p = p_values
+
+    for j, key in enumerate(comparison_keys):
+        comparisons[key]['p_value_corrected'] = corrected_p[j]
+        comparisons[key]['significant'] = corrected_p[j] < alpha
+        comparisons[key]['correction_method'] = correction
+
+    return comparisons
+
 
 def generate_ci_summary_table(
     methods_results: Dict[str, Dict],

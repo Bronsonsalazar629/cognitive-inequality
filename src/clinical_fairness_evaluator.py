@@ -462,6 +462,105 @@ class ClinicallyCentricFairnessEvaluator:
 
         return verdict, risk_level, next_steps
 
+    def compute_counterfactual_fairness(
+        self,
+        X: pd.DataFrame,
+        y_pred: np.ndarray,
+        sensitive_attr_col: str,
+        causal_descendants: List[str] = None
+    ) -> Dict[str, float]:
+        """
+        Estimate counterfactual fairness: would predictions change if the
+        protected attribute were different, holding non-descendants fixed?
+
+        Approach (Kusner et al. 2017):
+        1. Identify causal descendants of the protected attribute
+        2. For each sample, create counterfactual by flipping the protected attr
+        3. Re-predict using only non-descendant features
+        4. Measure prediction change rate
+
+        Args:
+            X: Feature DataFrame (must include sensitive_attr_col)
+            y_pred: Original model predictions
+            sensitive_attr_col: Name of protected attribute column
+            causal_descendants: Columns causally downstream of protected attr.
+                If None, uses all columns correlated > 0.1 with the attribute.
+
+        Returns:
+            Dict with:
+            - counterfactual_unfairness: fraction of samples whose prediction
+              would change under counterfactual intervention (0 = perfectly fair)
+            - mean_prediction_change: average absolute change in prediction
+            - group_unfairness: per-group counterfactual unfairness rates
+        """
+        from sklearn.linear_model import LogisticRegression
+
+        if sensitive_attr_col not in X.columns:
+            logger.warning(f"{sensitive_attr_col} not in feature columns, skipping counterfactual analysis")
+            return {'counterfactual_unfairness': float('nan'), 'mean_prediction_change': float('nan')}
+
+        # Identify causal descendants if not provided
+        if causal_descendants is None:
+            correlations = X.corr()[sensitive_attr_col].abs()
+            causal_descendants = [
+                col for col in correlations.index
+                if col != sensitive_attr_col and correlations[col] > 0.1
+            ]
+            logger.info(f"  Auto-detected causal descendants of {sensitive_attr_col}: {causal_descendants}")
+
+        # Non-descendant features (should be unaffected by counterfactual)
+        non_descendant_cols = [
+            col for col in X.columns
+            if col != sensitive_attr_col and col not in causal_descendants
+        ]
+
+        if len(non_descendant_cols) == 0:
+            logger.warning("No non-descendant features found, cannot compute counterfactual fairness")
+            return {'counterfactual_unfairness': float('nan'), 'mean_prediction_change': float('nan')}
+
+        # Train a proxy model on non-descendant features only
+        proxy_model = LogisticRegression(random_state=42, max_iter=1000)
+        proxy_model.fit(X[non_descendant_cols].values, y_pred)
+        proxy_pred = proxy_model.predict(X[non_descendant_cols].values)
+
+        # Counterfactual: flip protected attribute and re-predict
+        X_cf = X.copy()
+        unique_vals = X[sensitive_attr_col].unique()
+        if len(unique_vals) == 2:
+            X_cf[sensitive_attr_col] = X[sensitive_attr_col].map(
+                {unique_vals[0]: unique_vals[1], unique_vals[1]: unique_vals[0]}
+            )
+        else:
+            # For non-binary: shift to next group cyclically
+            val_map = {unique_vals[i]: unique_vals[(i + 1) % len(unique_vals)]
+                       for i in range(len(unique_vals))}
+            X_cf[sensitive_attr_col] = X[sensitive_attr_col].map(val_map)
+
+        # Since proxy model uses only non-descendants, counterfactual predictions
+        # should be identical if model is counterfactually fair
+        cf_pred = proxy_model.predict(X_cf[non_descendant_cols].values)
+
+        prediction_changed = (proxy_pred != cf_pred)
+        counterfactual_unfairness = float(prediction_changed.mean())
+
+        # Per-group analysis
+        group_unfairness = {}
+        for val in unique_vals:
+            mask = X[sensitive_attr_col] == val
+            if mask.sum() > 0:
+                group_unfairness[str(val)] = float(prediction_changed[mask].mean())
+
+        result = {
+            'counterfactual_unfairness': counterfactual_unfairness,
+            'mean_prediction_change': counterfactual_unfairness,
+            'group_unfairness': group_unfairness,
+            'non_descendant_features': non_descendant_cols,
+            'causal_descendants': causal_descendants
+        }
+
+        logger.info(f"  Counterfactual unfairness: {counterfactual_unfairness:.1%}")
+        return result
+
     def comprehensive_fairness_audit(
         self,
         y_true: pd.Series,

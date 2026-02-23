@@ -18,7 +18,8 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import pandas as pd
 
-from src.gemini_client import create_gemini_client, GeminiClient
+from src.gemini_client import create_smart_llm_client
+from src.llm_client_base import BaseLLMClient
 from src.causal_graph_refiner import CausalGraphRefiner, CausalEdge
 from src.bias_interpreter import BiasInterpreter
 from src.intervention_recommender import InterventionRecommender
@@ -52,19 +53,19 @@ class ClinicalFairnessReportGenerator:
     clinical fairness analysis with implementation code.
     """
 
-    def __init__(self, gemini_client: Optional[GeminiClient] = None):
+    def __init__(self, llm_client: Optional[BaseLLMClient] = None):
         """
         Initialize report generator.
 
         Args:
-            gemini_client: Configured Gemini client (can be None for fallback mode)
+            llm_client: Configured LLM client (can be None for fallback mode)
         """
-        self.gemini_client = gemini_client
+        self.llm_client = llm_client
 
-        self.causal_refiner = CausalGraphRefiner(self.gemini_client)
-        self.bias_interpreter = BiasInterpreter(self.gemini_client)
-        self.intervention_recommender = InterventionRecommender(self.gemini_client)
-        self.code_generator = CodeGenerator(self.gemini_client)
+        self.causal_refiner = CausalGraphRefiner(self.llm_client)
+        self.bias_interpreter = BiasInterpreter(self.llm_client)
+        self.intervention_recommender = InterventionRecommender(self.llm_client)
+        self.code_generator = CodeGenerator(self.llm_client)
 
         self.output_dir = Path("results")
         self.code_output_dir = Path("results/generated_code")
@@ -355,7 +356,7 @@ def generate_clinical_fairness_report(
     discovered_edges: List[Tuple[str, str]],
     benchmark_results: Dict,
     context: str = "medicare_high_cost",
-    gemini_client: Optional[GeminiClient] = None
+    llm_client: Optional[BaseLLMClient] = None
 ) -> ClinicalFairnessReport:
     """
     Convenience function to generate clinical fairness report.
@@ -368,12 +369,12 @@ def generate_clinical_fairness_report(
         discovered_edges: Discovered causal edges
         benchmark_results: Benchmark results
         context: Clinical context
-        gemini_client: Gemini client (optional)
+        llm_client: LLM client (optional)
 
     Returns:
         ClinicalFairnessReport
     """
-    generator = ClinicalFairnessReportGenerator(gemini_client)
+    generator = ClinicalFairnessReportGenerator(llm_client)
     return generator.generate_report(
         data=data,
         protected_attr=protected_attr,

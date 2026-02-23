@@ -1,0 +1,22 @@
+# API Keys Configuration
+# Copy this to api_keys.yaml and fill in your keys
+# OR set environment variables: DEEPSEEK_API_KEY, GEMINI_API_KEY
+
+# LLM Provider Selection
+# Options: "auto" (try DeepSeek first, fallback to Gemini)
+#          "deepseek" (force DeepSeek)
+#          "gemini" (force Gemini - required for demo)
+llm_provider: "auto"
+
+# DeepSeek API Configuration (for testing - unlimited requests)
+deepseek_api_key: ""  # or set DEEPSEEK_API_KEY env var
+deepseek_model: "deepseek-chat"
+
+# Gemini API Configuration (for demo - free tier with rate limits)
+gemini_api_key: ""  # or set GEMINI_API_KEY env var
+gemini_model: "gemini-2.0-flash"
+
+# Configuration
+enable_llm: true
+enable_cache: true
+log_level: "INFO"

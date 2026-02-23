@@ -376,11 +376,11 @@ class BiasDetector:
         Returns:
             Clinical interpretation of bias (2 sentences)
         """
-        from causal_analysis import _init_gemini, _call_gemini_with_retry
+        from causal_analysis import _init_smart_llm_client, _call_llm_with_retry
 
-        gemini_model = _init_gemini()
+        llm_client = _init_smart_llm_client()
 
-        if not gemini_model:
+        if not llm_client:
             return f"Statistical bias detected in {outcome} predictions across {sensitive_attr} groups. Clinical review recommended."
 
         dp_diff = bias_report.get('demographic_parity', {}).get('difference', 0)
@@ -397,7 +397,7 @@ Group-level metrics: {bias_report.get('group_metrics', {})}
 Explain the potential real-world harm to patients in exactly 2 sentences.
 Focus on clinical safety and health equity implications."""
 
-        response = _call_gemini_with_retry(gemini_model, prompt)
+        response = _call_llm_with_retry(llm_client, prompt)
 
         if response:
             return response.strip()

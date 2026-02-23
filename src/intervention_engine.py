@@ -359,11 +359,11 @@ class InterventionEngine:
         Returns:
             Clinical justification (1 sentence)
         """
-        from causal_analysis import _init_gemini, _call_gemini_with_retry
+        from causal_analysis import _init_smart_llm_client, _call_llm_with_retry
 
-        gemini_model = _init_gemini()
+        llm_client = _init_smart_llm_client()
 
-        if not gemini_model:
+        if not llm_client:
             return f"{intervention_name} may reduce bias in {outcome} predictions."
 
         prompt = f"""Why is {intervention_name} appropriate for mitigating bias in {outcome} prediction with sensitive attribute {sensitive_attr}?
@@ -374,7 +374,7 @@ Consider:
 
 Respond in exactly 1 sentence."""
 
-        response = _call_gemini_with_retry(gemini_model, prompt)
+        response = _call_llm_with_retry(llm_client, prompt)
         return response.strip() if response else f"{intervention_name} addresses systematic disparities while maintaining clinical validity."
 
     def simulate_intervention(

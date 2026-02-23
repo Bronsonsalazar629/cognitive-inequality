@@ -14,7 +14,7 @@ from typing import Dict, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
-from src.gemini_client import GeminiClient
+from src.llm_client_base import BaseLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +86,14 @@ class BiasInterpreter:
     - Always focuses on human impact, not statistics
     """
 
-    def __init__(self, gemini_client: GeminiClient):
+    def __init__(self, llm_client: BaseLLMClient):
         """
         Initialize interpreter.
 
         Args:
-            gemini_client: Configured Gemini API client
+            llm_client: Configured LLM API client
         """
-        self.gemini_client = gemini_client
+        self.llm_client = llm_client
 
     def interpret_bias_clinically(
         self,
@@ -239,7 +239,7 @@ the principle of justice (fair access to care) and beneficence (prevent harm)."
 """
 
         try:
-            response = self.gemini_client.call_with_retry(
+            response = self.llm_client.call_with_retry(
                 prompt,
                 temperature=0.7,
                 system_instruction=system_instruction
@@ -315,7 +315,7 @@ Keep under 50 words. Focus on outcomes, not methods.
 """
 
         try:
-            response = self.gemini_client.call_with_retry(
+            response = self.llm_client.call_with_retry(
                 prompt,
                 temperature=0.5,
                 system_instruction=system_instruction
@@ -335,7 +335,7 @@ def interpret_bias_clinically(
     demographic_parity_diff: float,
     protected_attr: str,
     outcome: str,
-    gemini_client: GeminiClient,
+    llm_client: BaseLLMClient,
     context: str = "medicare_high_cost",
     dataset_size: Optional[int] = None
 ) -> BiasHarmReport:
@@ -347,14 +347,14 @@ def interpret_bias_clinically(
         demographic_parity_diff: DP difference metric
         protected_attr: Protected attribute
         outcome: Outcome variable
-        gemini_client: Gemini API client
+        llm_client: LLM API client
         context: Clinical context
         dataset_size: Dataset size for impact estimates
 
     Returns:
         BiasHarmReport with clinical narrative
     """
-    interpreter = BiasInterpreter(gemini_client)
+    interpreter = BiasInterpreter(llm_client)
     return interpreter.interpret_bias_clinically(
         fnr_disparity,
         demographic_parity_diff,

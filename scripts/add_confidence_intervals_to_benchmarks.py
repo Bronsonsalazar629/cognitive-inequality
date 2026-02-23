@@ -109,7 +109,8 @@ def train_and_evaluate_methods_with_ci(df, n_bootstrap=1000):
 
     logger.info("Computing CIs for Unmitigated Baseline...")
     methods_results['Unmitigated Baseline'] = compute_fairness_with_confidence_intervals(
-        y_test, y_pred_baseline, protected_test, n_bootstrap=n_bootstrap
+        y_test, y_pred_baseline, protected_test, n_bootstrap=n_bootstrap,
+        return_raw_samples=True
     )
 
     logger.info("Training Fairlearn (Demographic Parity)...")
@@ -122,7 +123,8 @@ def train_and_evaluate_methods_with_ci(df, n_bootstrap=1000):
 
     logger.info("Computing CIs for Fairlearn (Demographic Parity)...")
     methods_results['Fairlearn (Demographic Parity)'] = compute_fairness_with_confidence_intervals(
-        y_test, y_pred_dp, protected_test, n_bootstrap=n_bootstrap
+        y_test, y_pred_dp, protected_test, n_bootstrap=n_bootstrap,
+        return_raw_samples=True
     )
 
     logger.info("Training Fairlearn (Equalized Odds)...")
@@ -135,7 +137,8 @@ def train_and_evaluate_methods_with_ci(df, n_bootstrap=1000):
 
     logger.info("Computing CIs for Fairlearn (Equalized Odds)...")
     methods_results['Fairlearn (Equalized Odds)'] = compute_fairness_with_confidence_intervals(
-        y_test, y_pred_eo, protected_test, n_bootstrap=n_bootstrap
+        y_test, y_pred_eo, protected_test, n_bootstrap=n_bootstrap,
+        return_raw_samples=True
     )
 
     logger.info("Training AIF360 Reweighing...")
@@ -160,7 +163,8 @@ def train_and_evaluate_methods_with_ci(df, n_bootstrap=1000):
 
     logger.info("Computing CIs for AIF360 Reweighing...")
     methods_results['AIF360 Reweighing'] = compute_fairness_with_confidence_intervals(
-        y_test, y_pred_aif, protected_test, n_bootstrap=n_bootstrap
+        y_test, y_pred_aif, protected_test, n_bootstrap=n_bootstrap,
+        return_raw_samples=True
     )
 
     return methods_results

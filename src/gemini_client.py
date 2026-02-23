@@ -295,12 +295,24 @@ Return ONLY valid JSON matching this schema. No markdown, no explanations."""
             raise
 
 def load_gemini_config(config_path: str = "config/api_keys.yaml") -> Dict[str, Any]:
-    """Load Gemini configuration from YAML file."""
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+    """Load LLM configuration from YAML file with env var fallback."""
+    config = {}
 
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+    if os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f) or {}
+
+    # Environment variables override file config
+    if os.environ.get('DEEPSEEK_API_KEY'):
+        config['deepseek_api_key'] = os.environ['DEEPSEEK_API_KEY']
+    if os.environ.get('LLM_PROVIDER'):
+        config['llm_provider'] = os.environ['LLM_PROVIDER']
+
+    # Defaults — DeepSeek is the sole provider
+    config.setdefault('llm_provider', 'deepseek')
+    config.setdefault('deepseek_model', 'deepseek-chat')
+    config.setdefault('enable_cache', True)
+    config.setdefault('enable_llm', True)
 
     return config
 
@@ -322,52 +334,28 @@ def create_gemini_client(config_path: str = "config/api_keys.yaml") -> GeminiCli
 
 def create_smart_llm_client(config_path: str = "config/api_keys.yaml") -> 'BaseLLMClient':
     """
-    Create LLM client with automatic provider selection and failover.
-
-    Auto-switching logic:
-    1. Try DeepSeek first (if API key available) - unlimited, fast
-    2. Fall back to Gemini (if DeepSeek unavailable/exceeded) - free tier with rate limits
-    3. Both clients support automatic fallback to templates if quota exceeded
+    Create DeepSeek LLM client from configuration.
 
     Args:
         config_path: Path to API keys configuration
 
     Returns:
-        BaseLLMClient instance (either DeepSeekClient or GeminiClient)
+        BaseLLMClient instance (DeepSeekClient)
     """
     config = load_gemini_config(config_path)
 
-    preferred_provider = config.get('llm_provider', 'auto').lower()
-
     deepseek_key = config.get('deepseek_api_key', '').strip()
-    gemini_key = config.get('gemini_api_key', '').strip()
 
-    if preferred_provider == 'deepseek' or (preferred_provider == 'auto' and deepseek_key):
-        if deepseek_key:
-            try:
-                from .deepseek_client import DeepSeekClient
-                logger.info("Using DeepSeek (unlimited requests, fast)")
-                return DeepSeekClient(
-                    api_key=deepseek_key,
-                    model=config.get('deepseek_model', 'deepseek-chat'),
-                    enable_cache=config.get('enable_cache', True)
-                )
-            except Exception as e:
-                logger.warning(f"Failed to create DeepSeek client: {e}")
-                logger.info("Falling back to Gemini...")
-
-    if preferred_provider == 'gemini' or (preferred_provider == 'auto' and gemini_key):
-        if gemini_key:
-            logger.info("Using Gemini (free tier with 30s rate limiting)")
-            return GeminiClient(
-                api_key=gemini_key,
-                model=config.get('gemini_model', 'gemini-2.0-flash'),
-                enable_cache=config.get('enable_cache', True)
-            )
+    if deepseek_key:
+        from .deepseek_client import DeepSeekClient
+        logger.info("Using DeepSeek (unlimited requests, no rate limits)")
+        return DeepSeekClient(
+            api_key=deepseek_key,
+            model=config.get('deepseek_model', 'deepseek-chat'),
+            enable_cache=config.get('enable_cache', True)
+        )
 
     raise ValueError(
-        "No valid LLM provider configured. Please add either:\n"
-        "  - deepseek_api_key (recommended for testing)\n"
-        "  - gemini_api_key (required for demo)\n"
-        "to config/api_keys.yaml"
+        "No DeepSeek API key configured. Set DEEPSEEK_API_KEY env var or add\n"
+        "deepseek_api_key to config/api_keys.yaml"
     )

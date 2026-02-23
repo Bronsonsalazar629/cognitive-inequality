@@ -57,7 +57,6 @@ class DeepSeekClient(BaseLLMClient):
         self.api_url = "https://api.deepseek.com/v1/chat/completions"
         self.cache_dir = Path(cache_dir)
         self.log_dir = Path(log_dir)
-
         self.cache_dir.mkdir(exist_ok=True)
         self.log_dir.mkdir(exist_ok=True)
 
@@ -112,7 +111,7 @@ class DeepSeekClient(BaseLLMClient):
             Model response text
         """
         if self._quota_exceeded:
-            raise RuntimeError("DeepSeek quota exceeded - switch to Gemini or use fallback mode")
+            raise RuntimeError("DeepSeek quota exceeded - using fallback mode")
 
         cache_key = self._get_cache_key(prompt, temperature)
         start_time = time.time()
