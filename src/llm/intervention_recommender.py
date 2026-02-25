@@ -14,7 +14,7 @@ import logging
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 
-from src.llm_client_base import BaseLLMClient
+from src.llm.llm_client_base import BaseLLMClient
 
 logger = logging.getLogger(__name__)
 
