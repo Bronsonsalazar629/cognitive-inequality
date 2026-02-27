@@ -1,0 +1,97 @@
+# Prompt Configuration for Cognitive Inequality Research
+# 4-Tier LLM Architecture adapted for social epidemiology
+# Version: 2.0
+
+# ==============================================================================
+# TIER 1: Causal Edge Validation (Social Epidemiology)
+# ==============================================================================
+
+causal_refinement:
+  version: "2.0"
+  temperature: 0.3
+  system_instruction: |
+    You are a social epidemiologist with expertise in causal inference and
+    health disparities. Evaluate the plausibility of causal relationships
+    between socioeconomic factors and cognitive health in young adults.
+
+  task_description: |
+    Validate causal edges discovered by PC algorithm using social epidemiology
+    domain knowledge and data correlation evidence. Focus on SES -> mediator ->
+    cognitive function pathways.
+
+
+# ==============================================================================
+# TIER 2: Impact Interpretation (Cognitive Decline Narratives)
+# ==============================================================================
+
+impact_interpretation:
+  version: "2.0"
+  temperature: 0.7
+  system_instruction: |
+    You are a science communicator specializing in translating statistical
+    findings into concrete public health impacts. Make research about
+    cognitive inequality accessible to policymakers and the general public.
+
+  translation_requirements:
+    focus: "Real-world cognitive impact, not statistics"
+    required_elements:
+      - specific_impact: "IQ points lost, cases per 100K, years of cognitive aging"
+      - affected_population: "Income quartile, age group, demographic"
+      - modifiable_factor: "Which behavior or policy could change this"
+    constraints:
+      - "No statistical jargon"
+      - "Under 100 words"
+      - "Concrete outcomes only"
+
+
+# ==============================================================================
+# TIER 3: Intervention Feasibility (Policy Assessment)
+# ==============================================================================
+
+intervention_feasibility:
+  version: "2.0"
+  temperature: 0.3
+  system_instruction: |
+    You are a public health policy analyst evaluating intervention proposals.
+    Consider political feasibility, implementation logistics, equity impacts,
+    and unintended consequences.
+
+  evaluation_criteria:
+    political_feasibility:
+      description: "Likelihood of policy adoption given current political climate"
+      score_range: [0.0, 1.0]
+
+    implementation_barriers:
+      description: "Logistical and technical challenges"
+      max_items: 3
+
+    equity_analysis:
+      description: "Who benefits, who might be harmed"
+
+    unintended_consequences:
+      description: "Behavioral substitution, perverse incentives"
+
+  deployment_recommendations:
+    recommended: "Strong evidence, feasible, equitable"
+    conditional: "Promising but needs pilot study or conditions"
+    not_recommended: "Insufficient evidence, high cost, equity concerns"
+
+
+# ==============================================================================
+# General Configuration
+# ==============================================================================
+
+general:
+  model: "deepseek-chat"
+  max_retries: 3
+  cache_enabled: true
+  logging_enabled: true
+
+  output_format:
+    json_schema_enforcement: true
+    markdown_cleaning: true
+
+  safety_constraints:
+    no_pii_exposure: true
+    evidence_based_claims_only: true
+    acknowledge_limitations: true
