@@ -1,27 +1,23 @@
 """
-Clinical Fairness Intervention System - Main Entry Point
+Cognitive Inequality Research System - Main Entry Point
 
-Command-line interface and orchestration for the complete fairness analysis pipeline.
+Pipeline for analyzing causal pathways from socioeconomic inequality
+to cognitive decline in young adults (ages 25-45).
 
 Usage:
-    python main.py analyze --data data/sample/demo_data.csv --model model.pkl
-    python main.py generate --intervention Reweighing
-    python main.py pipeline --data data/sample/demo_data.csv --output results/
+    python -m src.main download [--cache-dir data/raw]
+    python -m src.main analyze --dataset nhanes
+    python -m src.main pipeline --config config/api_keys.yaml
 """
 
-import os
-import sys
 import argparse
 import logging
-import pandas as pd
-import pickle
+import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from causal_analysis import CausalAnalyzer, infer_causal_graph
-from bias_detection import BiasDetector, compute_fairness_metrics
-from intervention_engine import InterventionEngine, suggest_interventions
-from code_generator import CodeGenerator
+import pandas as pd
+import yaml
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,344 +25,147 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class FairnessPipeline:
-    """
-    Orchestrates the complete fairness analysis and intervention pipeline.
-    """
 
-    def __init__(
-        self,
-        data_path: str,
-        sensitive_attr: str = "race",
-        outcome: str = "referral",
-        config_path: Optional[str] = None
-    ):
-        """
-        Initialize the fairness pipeline.
+class CognitiveInequalityPipeline:
+    """Orchestrates the cognitive inequality analysis pipeline."""
 
-        Args:
-            data_path: Path to clinical dataset CSV
-            sensitive_attr: Protected attribute column name
-            outcome: Outcome variable column name
-            config_path: Optional path to configuration file
-        """
-        self.data_path = data_path
-        self.sensitive_attr = sensitive_attr
-        self.outcome = outcome
+    def __init__(self, config_path: Optional[str] = None):
         self.config = self._load_config(config_path) if config_path else {}
-
-        self.data = pd.read_csv(data_path)
-        logger.info(f"Loaded {len(self.data)} records from {data_path}")
-
-        self.causal_analyzer = None
-        self.bias_detector = BiasDetector([sensitive_attr])
-        self.intervention_engine = InterventionEngine()
-        self.code_generator = CodeGenerator(
-            api_key=self.config.get('deepseek_api_key')
-        )
+        self.datasets = {}
 
     def _load_config(self, config_path: str) -> Dict[str, Any]:
-        """Load configuration from YAML file."""
-        import yaml
         try:
             with open(config_path, 'r') as f:
                 return yaml.safe_load(f)
         except Exception as e:
-            logger.warning(f"Could not load config from {config_path}: {e}")
+            logger.warning(f"Could not load config: {e}")
             return {}
 
-    def run_causal_analysis(self) -> tuple:
-        """
-        Run causal graph inference.
+    def load_data(self, dataset_name: str, path: Optional[str] = None) -> pd.DataFrame:
+        """Load a processed dataset."""
+        if path and Path(path).exists():
+            df = pd.read_csv(path)
+        else:
+            processed = Path('data/processed') / f'{dataset_name}_cognitive.csv'
+            if processed.exists():
+                df = pd.read_csv(processed)
+            else:
+                raise FileNotFoundError(
+                    f"Dataset {dataset_name} not found. Run 'download' first."
+                )
 
-        Returns:
-            Tuple of (causal_graph, explanation)
-        """
+        self.datasets[dataset_name] = df
+        logger.info(f"Loaded {dataset_name}: {len(df)} rows, {len(df.columns)} columns")
+        return df
+
+    def run_descriptive(self, dataset_name: str = 'nhanes') -> Dict:
+        """Run descriptive statistics (Phase 2)."""
+        df = self.datasets.get(dataset_name)
+        if df is None:
+            df = self.load_data(dataset_name)
+
         logger.info("=" * 70)
-        logger.info("STEP 1: CAUSAL ANALYSIS")
-        logger.info("=" * 70)
-
-        result = infer_causal_graph(
-            self.data,
-            self.sensitive_attr,
-            self.outcome,
-            use_cache=True,
-            llm_config=self.config
-        )
-
-        graph = result['graph']
-        explanation = result['llm_explanation']
-
-        explanation_safe = explanation.replace('\u2192', '->')
-        print("\n" + explanation_safe)
-
-        self.causal_analyzer = CausalAnalyzer(
-            self.data,
-            self.sensitive_attr,
-            self.outcome
-        )
-        self.causal_analyzer.causal_graph = graph
-
-        pathways = self.causal_analyzer.identify_bias_pathways()
-        if pathways:
-            print("\nIdentified Bias Pathways:")
-            for i, path in enumerate(pathways, 1):
-                print(f"  {i}. {' -> '.join(path)}")
-
-        return graph, explanation
-
-    def run_bias_detection(self, model, X_test: pd.DataFrame, y_test: pd.Series) -> Dict:
-        """
-        Run bias detection on a trained model.
-
-        Args:
-            model: Trained ML model
-            X_test: Test features
-            y_test: Test labels
-
-        Returns:
-            Dictionary of fairness metrics
-        """
-        logger.info("=" * 70)
-        logger.info("STEP 2: BIAS DETECTION")
+        logger.info(f"DESCRIPTIVE STATISTICS - {dataset_name.upper()}")
         logger.info("=" * 70)
 
-        metrics = self.bias_detector.compute_fairness_metrics(
-            model, X_test, y_test, self.sensitive_attr
-        )
+        stats = {
+            'n': len(df),
+            'age_mean': df['RIDAGEYR'].mean() if 'RIDAGEYR' in df.columns else None,
+            'age_sd': df['RIDAGEYR'].std() if 'RIDAGEYR' in df.columns else None,
+            'cognitive_mean': df['cognitive_score'].mean() if 'cognitive_score' in df.columns else None,
+            'cognitive_sd': df['cognitive_score'].std() if 'cognitive_score' in df.columns else None,
+            'ses_mean': df['ses_index'].mean() if 'ses_index' in df.columns else None,
+            'missing_pct': df.isnull().mean().to_dict(),
+        }
 
-        report = self.bias_detector.generate_bias_report(metrics, self.sensitive_attr)
-        print("\n" + report)
+        for key, val in stats.items():
+            if key != 'missing_pct':
+                logger.info(f"  {key}: {val}")
 
-        return metrics
+        return stats
 
-    def run_intervention_recommendation(self, bias_metrics: Dict) -> list:
-        """
-        Generate intervention recommendations.
-
-        Args:
-            bias_metrics: Output from bias detection
-
-        Returns:
-            List of intervention recommendations
-        """
+    def run_causal_discovery(self, dataset_name: str = 'nhanes') -> Dict:
+        """Run PC algorithm causal discovery (Phase 3)."""
         logger.info("=" * 70)
-        logger.info("STEP 3: INTERVENTION RECOMMENDATIONS")
+        logger.info("CAUSAL DISCOVERY")
         logger.info("=" * 70)
+        logger.info("Not yet implemented - use src.analysis.pc_algorithm_social")
+        return {}
 
-        recommendations = self.intervention_engine.suggest_interventions(
-            bias_metrics,
-            max_recommendations=5
-        )
-
-        print("\nRecommended Interventions:")
-        for rec in recommendations:
-            print(f"\n{rec.priority}. {rec.name} ({rec.category})")
-            print(f"   {rec.description}")
-            print(f"   Expected Impact: {rec.expected_impact}")
-            print(f"   Complexity: {rec.complexity}")
-            print(f"   Preserves Accuracy: {rec.preserves_accuracy}")
-
-        return recommendations
-
-    def run_code_generation(self, intervention_name: str, output_path: Optional[str] = None):
-        """
-        Generate implementation code for an intervention.
-
-        Args:
-            intervention_name: Name of intervention to implement
-            output_path: Optional path to save generated code
-        """
+    def run_mediation(self, dataset_name: str = 'nhanes') -> Dict:
+        """Run Baron-Kenny mediation analysis (Phase 4)."""
         logger.info("=" * 70)
-        logger.info("STEP 4: CODE GENERATION")
+        logger.info("MEDIATION ANALYSIS")
+        logger.info("=" * 70)
+        logger.info("Not yet implemented - use src.analysis.mediation_analysis")
+        return {}
+
+    def run_full_pipeline(self):
+        """Run the complete analysis pipeline."""
+        logger.info("=" * 70)
+        logger.info("COGNITIVE INEQUALITY RESEARCH - FULL PIPELINE")
         logger.info("=" * 70)
 
-        result = self.code_generator.generate_fix_code(intervention_name)
+        # Phase 1-2: Data + Descriptive
+        self.load_data('nhanes')
+        self.run_descriptive('nhanes')
 
-        print(f"\nGenerated Code for: {result.intervention_name}")
-        print(f"Description: {result.description}")
-        print(f"Estimated Runtime: {result.estimated_runtime}")
-        print("\n" + "=" * 70)
-        print("IMPORTS:")
-        print("=" * 70)
-        for imp in result.imports:
-            print(imp)
+        # Phase 3: Causal Discovery (stub)
+        self.run_causal_discovery('nhanes')
 
-        print("\n" + "=" * 70)
-        print("CODE:")
-        print("=" * 70)
-        print(result.code)
+        # Phase 4: Mediation (stub)
+        self.run_mediation('nhanes')
 
-        print("\n" + "=" * 70)
-        print("USAGE EXAMPLE:")
-        print("=" * 70)
-        print(result.usage_example)
+        logger.info("\nPIPELINE COMPLETE (stubs for phases 3-5)")
 
-        if output_path:
-            full_code = "\n".join(result.imports) + "\n\n" + result.code + "\n\n# " + "=" * 70 + "\n# USAGE EXAMPLE\n# " + "=" * 70 + "\n" + result.usage_example
-            with open(output_path, 'w') as f:
-                f.write(full_code)
-            logger.info(f"Code saved to {output_path}")
-
-    def run_full_pipeline(self, model, X_test: pd.DataFrame, y_test: pd.Series, output_dir: Optional[str] = None):
-        """
-        Run the complete fairness analysis pipeline.
-
-        Args:
-            model: Trained ML model to analyze
-            X_test: Test features
-            y_test: Test labels
-            output_dir: Optional directory to save results
-        """
-        logger.info("\n" + "=" * 70)
-        logger.info("CLINICAL FAIRNESS INTERVENTION SYSTEM - FULL PIPELINE")
-        logger.info("=" * 70 + "\n")
-
-        graph, explanation = self.run_causal_analysis()
-
-        bias_metrics = self.run_bias_detection(model, X_test, y_test)
-
-        recommendations = self.run_intervention_recommendation(bias_metrics)
-
-        if recommendations:
-            top_intervention = recommendations[0].name
-            output_path = None
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
-                output_path = os.path.join(output_dir, f"{top_intervention.replace(' ', '_').lower()}_fix.py")
-
-            self.run_code_generation(top_intervention, output_path)
-
-        logger.info("\n" + "=" * 70)
-        logger.info("PIPELINE COMPLETED")
-        logger.info("=" * 70)
-
-def train_demo_model(data: pd.DataFrame, test_size: float = 0.3):
-    """
-    Train a simple demo model for testing.
-
-    Args:
-        data: Clinical dataset
-        test_size: Fraction of data for testing
-
-    Returns:
-        Tuple of (model, X_train, X_test, y_train, y_test)
-    """
-    from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import LabelEncoder
-    from sklearn.linear_model import LogisticRegression
-
-    data = data.copy()
-    le_race = LabelEncoder()
-    le_gender = LabelEncoder()
-    le_insurance = LabelEncoder()
-
-    data['race_encoded'] = le_race.fit_transform(data['race'])
-    data['gender_encoded'] = le_gender.fit_transform(data['gender'])
-    data['insurance_encoded'] = le_insurance.fit_transform(data['insurance_type'])
-
-    feature_cols = [
-        'age', 'gender_encoded', 'creatinine_level',
-        'chronic_conditions', 'insurance_encoded', 'prior_visits',
-        'distance_to_hospital'
-    ]
-    # Keep 'race' column for fairness evaluation but exclude race_encoded from model features
-    X = data[feature_cols + ['race']]
-    y = data['referral']
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=42, stratify=data['race']
-    )
-
-    model = LogisticRegression(random_state=42, max_iter=1000)
-    model.fit(X_train[feature_cols], y_train)
-
-    logger.info(f"Trained model accuracy: {model.score(X_test[feature_cols], y_test):.3f}")
-
-    return model, X_train, X_test, y_train, y_test
 
 def main():
-    """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Clinical Fairness Intervention System",
+        description="Cognitive Inequality Research System",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
 
-    pipeline_parser = subparsers.add_parser('pipeline', help='Run full fairness pipeline')
-    pipeline_parser.add_argument('--data', required=True, help='Path to clinical data CSV')
-    pipeline_parser.add_argument('--model', help='Path to trained model pickle (optional, will train demo model if not provided)')
-    pipeline_parser.add_argument('--sensitive-attr', default='race', help='Protected attribute name')
-    pipeline_parser.add_argument('--outcome', default='referral', help='Outcome variable name')
-    pipeline_parser.add_argument('--output', help='Output directory for results')
-    pipeline_parser.add_argument('--config', help='Path to config YAML file')
+    # Download command
+    dl_parser = subparsers.add_parser('download', help='Download and preprocess datasets')
+    dl_parser.add_argument('--cache-dir', default='data/raw')
+    dl_parser.add_argument('--output-dir', default='data/processed')
+    dl_parser.add_argument('--brfss-path', default=None)
+    dl_parser.add_argument('--gss-path', default=None)
 
-    analyze_parser = subparsers.add_parser('analyze', help='Run causal and bias analysis')
-    analyze_parser.add_argument('--data', required=True, help='Path to clinical data CSV')
-    analyze_parser.add_argument('--model', help='Path to trained model pickle')
-    analyze_parser.add_argument('--sensitive-attr', default='race', help='Protected attribute name')
-    analyze_parser.add_argument('--outcome', default='referral', help='Outcome variable name')
+    # Analyze command
+    analyze_parser = subparsers.add_parser('analyze', help='Run analysis on processed data')
+    analyze_parser.add_argument('--dataset', default='nhanes', choices=['nhanes', 'brfss', 'gss'])
+    analyze_parser.add_argument('--config', help='Path to config YAML')
 
-    generate_parser = subparsers.add_parser('generate', help='Generate intervention code')
-    generate_parser.add_argument('--intervention', required=True, help='Intervention type')
-    generate_parser.add_argument('--output', help='Output file path')
+    # Pipeline command
+    pipe_parser = subparsers.add_parser('pipeline', help='Run full analysis pipeline')
+    pipe_parser.add_argument('--config', help='Path to config YAML')
 
     args = parser.parse_args()
 
-    if args.command == 'pipeline':
-        pipeline = FairnessPipeline(
-            args.data,
-            args.sensitive_attr,
-            args.outcome,
-            args.config
-        )
-
-        if args.model and os.path.exists(args.model):
-            with open(args.model, 'rb') as f:
-                model = pickle.load(f)
-            logger.error("Loading external models requires additional data preparation code")
-            sys.exit(1)
-        else:
-            logger.info("Training demo model...")
-            model, X_train, X_test, y_train, y_test = train_demo_model(pipeline.data)
-
-        pipeline.run_full_pipeline(model, X_test, y_test, args.output)
+    if args.command == 'download':
+        from src.data.download_all_datasets import main as download_main
+        sys.argv = ['download', '--cache-dir', args.cache_dir, '--output-dir', args.output_dir]
+        if args.brfss_path:
+            sys.argv += ['--brfss-path', args.brfss_path]
+        if args.gss_path:
+            sys.argv += ['--gss-path', args.gss_path]
+        download_main()
 
     elif args.command == 'analyze':
-        pipeline = FairnessPipeline(args.data, args.sensitive_attr, args.outcome)
+        pipeline = CognitiveInequalityPipeline(args.config)
+        pipeline.load_data(args.dataset)
+        pipeline.run_descriptive(args.dataset)
 
-        pipeline.run_causal_analysis()
-
-        if args.model and os.path.exists(args.model):
-            with open(args.model, 'rb') as f:
-                model = pickle.load(f)
-            logger.warning("Bias detection skipped - implement data preparation for external models")
-        else:
-            logger.info("Training demo model for bias analysis...")
-            model, X_train, X_test, y_train, y_test = train_demo_model(pipeline.data)
-            pipeline.run_bias_detection(model, X_test, y_test)
-
-    elif args.command == 'generate':
-        generator = CodeGenerator()
-        generator_result = generator.generate_fix_code(args.intervention)
-
-        print(f"\nGenerated Code for: {generator_result.intervention_name}")
-        print("=" * 70)
-        for imp in generator_result.imports:
-            print(imp)
-        print("\n" + generator_result.code)
-        print("\n# USAGE EXAMPLE:")
-        print(generator_result.usage_example)
-
-        if args.output:
-            full_code = "\n".join(generator_result.imports) + "\n\n" + generator_result.code
-            with open(args.output, 'w') as f:
-                f.write(full_code)
-            logger.info(f"Code saved to {args.output}")
+    elif args.command == 'pipeline':
+        pipeline = CognitiveInequalityPipeline(args.config)
+        pipeline.run_full_pipeline()
 
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()
