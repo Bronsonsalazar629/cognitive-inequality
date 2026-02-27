@@ -11,7 +11,7 @@ def test_create_cognitive_composite():
 
     df = pd.DataFrame({
         'CFDDS': [50.0, 60.0, 70.0, 80.0],
-        'CFDCST': [15.0, 20.0, 25.0, 30.0],
+        'CFDCST1': [15.0, 20.0, 25.0, 30.0],
         'CFDCSR': [3.0, 5.0, 7.0, 9.0],
     })
     result = create_cognitive_composite(df)

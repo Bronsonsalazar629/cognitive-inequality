@@ -10,37 +10,41 @@ Output: Processed DataFrame with composite scores and survey weights.
 """
 
 import logging
+import io
+import tempfile
 import pandas as pd
 import numpy as np
+import requests
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# NHANES 2013-2014 table URLs (XPT format)
+# NHANES 2013-2014 table URLs (XPT format) - direct data download links
+_BASE = 'https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2013/DataFiles'
 NHANES_TABLES = {
-    'DEMO_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/DEMO_H.XPT',
-    'CFQ_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/CFQ_H.XPT',
-    'DPQ_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/DPQ_H.XPT',
-    'PAQ_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/PAQ_H.XPT',
-    'SLQ_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/SLQ_H.XPT',
-    'HIQ_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/HIQ_H.XPT',
-    'SMQ_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/SMQ_H.XPT',
-    'ALQ_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/ALQ_H.XPT',
-    'BMX_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/BMX_H.XPT',
-    'BPQ_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/BPQ_H.XPT',
-    'DIQ_H': 'https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/DIQ_H.XPT',
+    'DEMO_H': f'{_BASE}/DEMO_H.XPT',
+    'CFQ_H': f'{_BASE}/CFQ_H.XPT',
+    'DPQ_H': f'{_BASE}/DPQ_H.XPT',
+    'PAQ_H': f'{_BASE}/PAQ_H.XPT',
+    'SLQ_H': f'{_BASE}/SLQ_H.XPT',
+    'HIQ_H': f'{_BASE}/HIQ_H.XPT',
+    'SMQ_H': f'{_BASE}/SMQ_H.XPT',
+    'ALQ_H': f'{_BASE}/ALQ_H.XPT',
+    'BMX_H': f'{_BASE}/BMX_H.XPT',
+    'BPQ_H': f'{_BASE}/BPQ_H.XPT',
+    'DIQ_H': f'{_BASE}/DIQ_H.XPT',
 }
 
 # Columns to keep from each table
 TABLE_COLUMNS = {
     'DEMO_H': ['SEQN', 'RIDAGEYR', 'RIAGENDR', 'RIDRETH1', 'INDFMPIR',
                'DMDEDUC2', 'WTMEC2YR', 'SDMVPSU', 'SDMVSTRA'],
-    'CFQ_H': ['SEQN', 'CFDDS', 'CFDCST', 'CFDCSR'],
+    'CFQ_H': ['SEQN', 'CFDDS', 'CFDCST1', 'CFDCSR'],
     'DPQ_H': ['SEQN', 'DPQ020', 'DPQ030', 'DPQ040', 'DPQ050', 'DPQ060',
               'DPQ070', 'DPQ080', 'DPQ090', 'DPQ100'],
     'PAQ_H': ['SEQN', 'PAQ710', 'PAQ715'],
-    'SLQ_H': ['SEQN', 'SLQ120'],
+    'SLQ_H': ['SEQN', 'SLD010H'],
     'HIQ_H': ['SEQN', 'HIQ011'],
     'SMQ_H': ['SEQN', 'SMQ020'],
     'ALQ_H': ['SEQN', 'ALQ130'],
@@ -69,7 +73,13 @@ def fetch_nhanes_table(table_name: str, cache_dir: Optional[Path] = None) -> pd.
 
     url = NHANES_TABLES[table_name]
     logger.info(f"Downloading {table_name} from {url}")
-    df = pd.read_sas(url)
+    response = requests.get(url)
+    response.raise_for_status()
+    with tempfile.NamedTemporaryFile(suffix='.xpt', delete=False) as tmp:
+        tmp.write(response.content)
+        tmp_path = tmp.name
+    df = pd.read_sas(tmp_path, format='xport')
+    Path(tmp_path).unlink()
 
     # Keep only needed columns (some may be missing)
     wanted = TABLE_COLUMNS.get(table_name, [])
@@ -95,7 +105,7 @@ def create_cognitive_composite(df: pd.DataFrame) -> pd.DataFrame:
     Requires at least 2 of 3 tests present for a valid composite.
     """
     df = df.copy()
-    tests = ['CFDDS', 'CFDCST', 'CFDCSR']
+    tests = ['CFDDS', 'CFDCST1', 'CFDCSR']
 
     for test in tests:
         if test in df.columns:
@@ -185,9 +195,9 @@ def create_healthcare_access(df: pd.DataFrame) -> pd.DataFrame:
 def create_sleep_variable(df: pd.DataFrame) -> pd.DataFrame:
     """Extract sleep hours and create deprivation indicator."""
     df = df.copy()
-    if 'SLQ120' in df.columns:
-        df['sleep_hours'] = df['SLQ120']
-        df['sleep_deprived'] = ((df['SLQ120'] < 6) | (df['SLQ120'] > 9)).astype(float)
+    if 'SLD010H' in df.columns:
+        df['sleep_hours'] = df['SLD010H']
+        df['sleep_deprived'] = ((df['SLD010H'] < 6) | (df['SLD010H'] > 9)).astype(float)
     else:
         df['sleep_hours'] = np.nan
         df['sleep_deprived'] = np.nan
@@ -259,7 +269,7 @@ def load_nhanes(cache_dir: Optional[str] = None, output_path: Optional[str] = No
     final_cols = [
         'SEQN', 'RIDAGEYR', 'RIAGENDR', 'RIDRETH1', 'female',
         'INDFMPIR', 'DMDEDUC2', 'ses_index', 'ses_quartile',
-        'CFDDS', 'CFDCST', 'CFDCSR', 'cognitive_score',
+        'CFDDS', 'CFDCST1', 'CFDCSR', 'cognitive_score',
         'depression_score', 'screen_time_hours', 'sleep_hours', 'sleep_deprived',
         'has_insurance', 'smoker', 'ALQ130', 'BMXBMI', 'hypertension', 'diabetes',
         'WTMEC2YR', 'SDMVPSU', 'SDMVSTRA',
