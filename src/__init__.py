@@ -1,15 +1,9 @@
 """
-Clinical Fairness Intervention System
+Cognitive Inequality Research System
 
-A comprehensive toolkit for detecting and remediating bias in clinical ML models.
+Analyzes causal pathways from socioeconomic inequality to cognitive decline
+in young adults using NHANES, BRFSS, and GSS public health datasets.
 """
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __author__ = "Bronson"
-
-__all__ = [
-    "CausalAnalyzer",
-    "BiasDetector",
-    "InterventionEngine",
-    "CodeGenerator",
-]
