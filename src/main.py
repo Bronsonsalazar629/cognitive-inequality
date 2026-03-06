@@ -293,9 +293,33 @@ class CognitiveInequalityPipeline:
     # Full pipeline
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Phase 5: Sensitivity analysis (E-values)
+    # ------------------------------------------------------------------
+
+    def run_sensitivity(self, dataset_name: str = 'midus_mr2') -> Dict:
+        """E-value sensitivity analysis for the total and direct SES effects."""
+        from src.analysis.sensitivity_analysis import run_ses_cognition_sensitivity
+
+        mediation = self.results.get('mediation', {})
+        bk_results = mediation.get('baron_kenny', {})
+        if not bk_results:
+            logger.warning("No Baron-Kenny results found — run mediation first.")
+            return {}
+
+        df = self.datasets.get(dataset_name)
+        if df is None:
+            df = self.load_data(dataset_name)
+
+        sd_outcome = float(df['cognitive_score'].std()) if 'cognitive_score' in df.columns else 0.821
+
+        sensitivity = run_ses_cognition_sensitivity(bk_results, sd_outcome=sd_outcome)
+        self.results['sensitivity'] = sensitivity
+        return sensitivity
+
     def run_full_pipeline(self, dataset_name: str = 'midus_mr2',
                           n_bootstrap: int = 1000) -> Dict:
-        """Run all four analysis stages in sequence."""
+        """Run all five analysis stages in sequence."""
         logger.info("=" * 70)
         logger.info("COGNITIVE INEQUALITY RESEARCH — FULL PIPELINE")
         logger.info(f"Primary dataset: {dataset_name.upper()}")
@@ -306,6 +330,7 @@ class CognitiveInequalityPipeline:
         self.run_causal_discovery(dataset_name)
         self.run_mediation(dataset_name, n_bootstrap=n_bootstrap)
         self.run_prediction(dataset_name)
+        self.run_sensitivity(dataset_name)
 
         # Save summary results
         self._save_results()
@@ -343,6 +368,30 @@ class CognitiveInequalityPipeline:
                     'significant':          name in med['significant'],
                 })
             pd.DataFrame(rows).to_csv(out / 'mediation_results.csv', index=False)
+
+        # Sensitivity / E-values
+        if 'sensitivity' in self.results:
+            sens = self.results['sensitivity']
+            rows = []
+            te = sens.get('total_effect', {})
+            rows.append({
+                'path': 'total_effect',
+                'mediator': None,
+                'estimate_type': 'c',
+                'evalue_point': round(te.get('evalue_point', float('nan')), 3),
+                'evalue_ci': round(te.get('evalue_ci', float('nan')), 3),
+                'rr_approx': round(te.get('rr_approx', float('nan')), 3),
+            })
+            for med, ev in sens.get('direct_effects', {}).items():
+                rows.append({
+                    'path': 'direct_effect',
+                    'mediator': med,
+                    'estimate_type': "c'",
+                    'evalue_point': round(ev.get('evalue_point', float('nan')), 3),
+                    'evalue_ci': round(ev.get('evalue_ci', float('nan')), 3),
+                    'rr_approx': round(ev.get('rr_approx', float('nan')), 3),
+                })
+            pd.DataFrame(rows).to_csv(out / 'sensitivity_evalues.csv', index=False)
 
         # SHAP importance
         if 'prediction' in self.results:
