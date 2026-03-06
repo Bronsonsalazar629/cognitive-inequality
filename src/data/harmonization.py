@@ -47,3 +47,29 @@ def harmonize_datasets(datasets: Dict[str, pd.DataFrame],
         harmonized.append(h)
 
     return pd.concat(harmonized, ignore_index=True)
+
+
+def get_available_mediators(df: pd.DataFrame,
+                            candidate_mediators: list,
+                            min_valid_pct: float = 0.5) -> Dict[str, list]:
+    """
+    Return available mediator columns per dataset.
+
+    Args:
+        df: Combined DataFrame with 'dataset' column
+        candidate_mediators: List of potential mediator column names
+        min_valid_pct: Minimum fraction of non-null values required (default 50%)
+
+    Returns:
+        Dict mapping dataset name to list of available mediator columns
+    """
+    result = {}
+    for dataset_name, group in df.groupby('dataset'):
+        available = []
+        for col in candidate_mediators:
+            if col in group.columns:
+                valid_pct = group[col].notna().mean()
+                if valid_pct >= min_valid_pct:
+                    available.append(col)
+        result[dataset_name] = available
+    return result

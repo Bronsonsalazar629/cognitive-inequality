@@ -16,6 +16,42 @@ from src.data.harmonization import harmonize_datasets
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+DATASET_REGISTRY = {
+    'nhanes': {
+        'status': 'auto',
+        'instructions': 'Auto-downloaded from CDC NHANES API.',
+    },
+    'addhealth': {
+        'status': 'manual',
+        'instructions': (
+            'Download from ICPSR Study 21600 (Add Health Wave V). '
+            'Requires ICPSR login. Download DS0032 (main survey) and DS0042 (weights).'
+        ),
+    },
+    'brfss': {
+        'status': 'manual',
+        'instructions': 'Download BRFSS XPT file from CDC website.',
+    },
+    'gss': {
+        'status': 'manual',
+        'instructions': 'Download GSS .dta file from NORC website.',
+    },
+    'piaac': {
+        'status': 'manual',
+        'instructions': (
+            'Download PIAAC Cycle 2 (2023) public-use CSV from OECD/NCES. '
+            'Semicolon-delimited. US file: prgusap2.csv.'
+        ),
+    },
+    'nsduh': {
+        'status': 'manual',
+        'instructions': (
+            'Download NSDUH 2024 public-use RData from SAMHSA. '
+            'File: NSDUH_2024.RData.'
+        ),
+    },
+}
+
 
 def generate_codebook(datasets: dict, output_path: str):
     """Auto-generate data dictionary from processed datasets."""
@@ -63,6 +99,10 @@ def main():
     parser.add_argument('--output-dir', default='data/processed', help='Output directory')
     parser.add_argument('--brfss-path', default=None, help='Path to BRFSS XPT file (manual download)')
     parser.add_argument('--gss-path', default=None, help='Path to GSS .dta file (manual download)')
+    parser.add_argument('--addhealth-path', default=None, help='Path to Add Health DS0032 .rda file')
+    parser.add_argument('--addhealth-weights', default=None, help='Path to Add Health DS0042 .rda file')
+    parser.add_argument('--piaac-path', default=None, help='Path to PIAAC semicolon-delimited CSV')
+    parser.add_argument('--nsduh-path', default=None, help='Path to NSDUH .RData file')
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -91,6 +131,46 @@ def main():
         print_quality_report('BRFSS', brfss)
     else:
         logger.warning("BRFSS skipped (provide --brfss-path to include)")
+
+    # Add Health (requires manual download from ICPSR)
+    if args.addhealth_path:
+        from src.data.data_loader_addhealth import load_addhealth
+        logger.info("Loading Add Health Wave V...")
+        addhealth = load_addhealth(
+            data_path=args.addhealth_path,
+            weights_path=args.addhealth_weights,
+            output_path=str(output_dir / 'addhealth_cognitive.csv')
+        )
+        datasets['addhealth'] = addhealth
+        print_quality_report('Add Health', addhealth)
+    else:
+        logger.warning("Add Health skipped (provide --addhealth-path to include)")
+
+    # PIAAC (requires manual download)
+    if args.piaac_path:
+        from src.data.data_loader_piaac import load_piaac
+        logger.info("Loading PIAAC Cycle 2...")
+        piaac = load_piaac(
+            data_path=args.piaac_path,
+            output_path=str(output_dir / 'piaac_cognitive.csv')
+        )
+        datasets['piaac'] = piaac
+        print_quality_report('PIAAC', piaac)
+    else:
+        logger.warning("PIAAC skipped (provide --piaac-path to include)")
+
+    # NSDUH (requires manual download)
+    if args.nsduh_path:
+        from src.data.data_loader_nsduh import load_nsduh
+        logger.info("Loading NSDUH 2024...")
+        nsduh = load_nsduh(
+            data_path=args.nsduh_path,
+            output_path=str(output_dir / 'nsduh_processed.csv')
+        )
+        datasets['nsduh'] = nsduh
+        print_quality_report('NSDUH', nsduh)
+    else:
+        logger.warning("NSDUH skipped (provide --nsduh-path to include)")
 
     # GSS (requires manual download)
     if args.gss_path:
