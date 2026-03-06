@@ -38,6 +38,10 @@ SURVEY_COLS = [
     'RB1PA108J',    # sleep vs pre-pandemic (1-5 scale)
     'RB1SC1',       # health insurance (1=yes, 2=no)
     'RB1PCV1',      # overall COVID difficulty (1-10)
+    # New psychological / neighborhood mediators
+    'RB1SPWBU2',    # Purpose in Life (7-item validated scale, higher=more purpose)
+    'RB1SCTRL',     # Sense of Control / Personal Mastery (composite, higher=more control)
+    'RB1SHOMET',    # Perceived Neighborhood Quality (composite, higher=better)
     # Survey weights
     'RB1PWGHT6',    # full post-stratification weight
     'RB1SWGHT1',    # phone + SAQ weight
@@ -240,6 +244,81 @@ def create_healthcare_access(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _normalize_0_1(series: pd.Series) -> pd.Series:
+    """Min-max normalize a series to [0, 1], returning NaN for missing."""
+    valid = series.dropna()
+    lo, hi = valid.min(), valid.max()
+    if pd.isna(lo) or hi <= lo:
+        return series * np.nan
+    return (series - lo) / (hi - lo)
+
+
+def create_purpose_in_life(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create Purpose in Life score from RB1SPWBU2.
+
+    RB1SPWBU2: Psychological Well-Being — Purpose in Life (7-item composite).
+    Higher scores = stronger sense of purpose and meaning.
+    Missing/refused codes (≥97) set to NaN. Normalized 0-1.
+    """
+    df = df.copy()
+    df['purpose_in_life'] = np.nan
+
+    if 'RB1SPWBU2' not in df.columns:
+        return df
+
+    raw = df['RB1SPWBU2'].copy()
+    raw[raw >= 97] = np.nan
+    raw[raw <= 0] = np.nan
+    df['purpose_in_life'] = _normalize_0_1(raw)
+
+    return df
+
+
+def create_sense_of_control(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create Sense of Control score from RB1SCTRL.
+
+    RB1SCTRL: Composite of Personal Mastery + Perceived Constraints.
+    Higher scores = greater sense of personal control over life outcomes.
+    Missing codes (≥97) set to NaN. Normalized 0-1.
+    """
+    df = df.copy()
+    df['sense_of_control'] = np.nan
+
+    if 'RB1SCTRL' not in df.columns:
+        return df
+
+    raw = df['RB1SCTRL'].copy()
+    raw[raw >= 97] = np.nan
+    raw[raw <= 0] = np.nan
+    df['sense_of_control'] = _normalize_0_1(raw)
+
+    return df
+
+
+def create_neighborhood_quality(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create Perceived Neighborhood Quality score from RB1SHOMET.
+
+    RB1SHOMET: Composite perceived quality of home/neighborhood environment.
+    Higher scores = better perceived neighborhood quality.
+    Missing codes (≥97) set to NaN. Normalized 0-1.
+    """
+    df = df.copy()
+    df['neighborhood_quality'] = np.nan
+
+    if 'RB1SHOMET' not in df.columns:
+        return df
+
+    raw = df['RB1SHOMET'].copy()
+    raw[raw >= 97] = np.nan
+    raw[raw <= 0] = np.nan
+    df['neighborhood_quality'] = _normalize_0_1(raw)
+
+    return df
+
+
 def create_confounders(df: pd.DataFrame) -> pd.DataFrame:
     """
     Encode confounder variables.
@@ -327,6 +406,9 @@ def load_midus_mr2(survey_path: Optional[str] = None,
     df = create_screen_time(df)
     df = create_sleep_variable(df)
     df = create_healthcare_access(df)
+    df = create_purpose_in_life(df)
+    df = create_sense_of_control(df)
+    df = create_neighborhood_quality(df)
     df = create_confounders(df)
 
     # SES quartiles
@@ -349,6 +431,7 @@ def load_midus_mr2(survey_path: Optional[str] = None,
         'cognitive_score',
         'depression_score', 'screen_time_change', 'sleep_change',
         'has_insurance',
+        'purpose_in_life', 'sense_of_control', 'neighborhood_quality',
         'RB1PWGHT6', 'RB1SWGHT1',
     ]
     available_final = [c for c in final_cols if c in df.columns]

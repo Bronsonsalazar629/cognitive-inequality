@@ -33,10 +33,15 @@ logger = logging.getLogger(__name__)
 
 # Mediators available in MIDUS MR2 (all 100% complete in merged dataset)
 MR2_MEDIATORS = [
+    # Original behavioral/access mediators
     'depression_score',
     'screen_time_change',
     'sleep_change',
     'has_insurance',
+    # New psychosocial / structural mediators (Phase 2)
+    'purpose_in_life',
+    'sense_of_control',
+    'neighborhood_quality',
 ]
 
 # Age variable per dataset
