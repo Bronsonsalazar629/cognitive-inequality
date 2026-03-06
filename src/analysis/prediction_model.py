@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 class CognitivePredictionModel:
     """XGBoost model for cognitive score prediction with SHAP explanations."""
 
-    def __init__(self, max_depth=6, n_estimators=100, learning_rate=0.1):
+    def __init__(self, max_depth=3, n_estimators=100, learning_rate=0.05,
+                 min_child_weight=10, subsample=0.8, colsample_bytree=0.8,
+                 reg_alpha=0.5, reg_lambda=1.0):
         self.model = None
         self.shap_values_ = None
         self.feature_names_ = None
@@ -30,18 +32,18 @@ class CognitivePredictionModel:
             'max_depth': max_depth,
             'n_estimators': n_estimators,
             'learning_rate': learning_rate,
+            'min_child_weight': min_child_weight,
+            'subsample': subsample,
+            'colsample_bytree': colsample_bytree,
+            'reg_alpha': reg_alpha,
+            'reg_lambda': reg_lambda,
         }
 
     def train(self, X: pd.DataFrame, y: pd.Series,
               weights: Optional[np.ndarray] = None):
         """Train XGBoost regressor."""
         self.feature_names_ = list(X.columns)
-        self.model = xgb.XGBRegressor(
-            max_depth=self.params['max_depth'],
-            n_estimators=self.params['n_estimators'],
-            learning_rate=self.params['learning_rate'],
-            random_state=42,
-        )
+        self.model = xgb.XGBRegressor(**self.params, random_state=42)
         self.model.fit(X, y, sample_weight=weights)
         logger.info(f"Trained XGBoost on {len(X)} samples, {len(self.feature_names_)} features")
 
@@ -61,12 +63,7 @@ class CognitivePredictionModel:
             y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
             w_train = weights[train_idx] if weights is not None else None
 
-            model = xgb.XGBRegressor(
-                max_depth=self.params['max_depth'],
-                n_estimators=self.params['n_estimators'],
-                learning_rate=self.params['learning_rate'],
-                random_state=42,
-            )
+            model = xgb.XGBRegressor(**self.params, random_state=42)
             model.fit(X_train, y_train, sample_weight=w_train)
             preds = model.predict(X_test)
 
