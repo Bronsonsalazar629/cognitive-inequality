@@ -170,9 +170,13 @@ class CognitiveInequalityPipeline:
         logger.info("=" * 70)
         logger.info(f"  Dataset: {dataset_name}, mediators: {mediators}")
 
+        from src.llm.ollama_client import OllamaClient
+        llm_available = OllamaClient().is_available()
+        logger.info(f"  Ollama {'available' if llm_available else 'not available'} — "
+                    f"{'enabling' if llm_available else 'skipping'} LLM graph validation")
         pc_result = discover_ses_cognition_paths(
             df, dataset_name=dataset_name,
-            mediators=mediators, alpha=alpha, use_llm=False,
+            mediators=mediators, alpha=alpha, use_llm=llm_available,
         )
         logger.info(f"  Adjacency matrix:\n{pc_result.get('adjacency')}")
         self.results['pc_discovery'] = pc_result
@@ -287,6 +291,7 @@ class CognitiveInequalityPipeline:
 
         prediction_results = {
             'model': model,
+            'X': X,
             'cv_results': cv,
             'feature_importance': importance,
             'r2_mean': r2_mean,
@@ -295,11 +300,44 @@ class CognitiveInequalityPipeline:
         return prediction_results
 
     # ------------------------------------------------------------------
-    # Full pipeline
+    # Phase 5: Counterfactual intervention simulation
     # ------------------------------------------------------------------
 
+    def run_counterfactual(self, dataset_name: str = 'midus_mr2') -> list:
+        """Simulate +1 SD policy interventions on significant mediators."""
+        from src.simulation.counterfactual_simulator import generate_interventions
+
+        pred = self.results.get('prediction', {})
+        med  = self.results.get('mediation', {})
+        model = pred.get('model')
+        X     = pred.get('X')
+        boot  = med.get('bootstrap', {})
+
+        if model is None or X is None or not boot:
+            logger.warning("Run prediction and mediation before counterfactual.")
+            return []
+
+        logger.info("=" * 70)
+        logger.info("COUNTERFACTUAL SIMULATION — SIGNIFICANT MEDIATORS")
+        logger.info("=" * 70)
+
+        interventions = generate_interventions(boot, model, X)
+
+        if not interventions:
+            logger.info("  No significant mediators — no interventions generated.")
+        else:
+            for r in interventions:
+                logger.info(
+                    f"  {r.variable}: baseline={r.baseline_mean:.3f} → "
+                    f"counterfactual={r.counterfactual_mean:.3f}  "
+                    f"Δ={r.effect_size:+.3f}  (N affected={r.affected_n})"
+                )
+
+        self.results['counterfactual'] = interventions
+        return interventions
+
     # ------------------------------------------------------------------
-    # Phase 5: Sensitivity analysis (E-values)
+    # Phase 6: Sensitivity analysis (E-values)
     # ------------------------------------------------------------------
 
     def run_sensitivity(self, dataset_name: str = 'midus_mr2') -> Dict:
@@ -335,6 +373,7 @@ class CognitiveInequalityPipeline:
         self.run_causal_discovery(dataset_name)
         self.run_mediation(dataset_name, n_bootstrap=n_bootstrap)
         self.run_prediction(dataset_name)
+        self.run_counterfactual(dataset_name)
         self.run_sensitivity(dataset_name)
 
         # Save summary results

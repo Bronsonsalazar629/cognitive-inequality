@@ -92,6 +92,19 @@ class CausalGraphRefiner:
                     "Distance to care correlates with amputation rates"
                 ],
                 "safety_threshold": "FNR disparity < 5.5% per Obermeyer"
+            },
+            "cognitive_inequality": {
+                "protected_attr_label": "socioeconomic status (SES index, 0-1)",
+                "outcome_label": "cognitive score (BTACT z-score composite)",
+                "expert_knowledge": [
+                    "Higher SES predicts better cognitive function across the lifespan (Farah 2018)",
+                    "Purpose in life mediates SES→cognition via psychological engagement (Ryff 1989)",
+                    "Personal mastery/sense of control is depleted by chronic economic stress (Pearlin 1978)",
+                    "Neighborhood quality affects cognitive stimulation and chronic stress exposure",
+                    "Depression reduces cognitive engagement and working memory capacity",
+                    "Healthcare access moderates cognitive decline through chronic disease management"
+                ],
+                "safety_threshold": "Bootstrap CI excludes zero at 95% confidence"
             }
         }
 

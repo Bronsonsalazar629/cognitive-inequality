@@ -13,19 +13,59 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-def refine_graph(adj_matrix: pd.DataFrame, variable_names: list) -> pd.DataFrame:
+def refine_graph(adj_matrix: pd.DataFrame, variable_names: list,
+                 data: pd.DataFrame = None, llm_client=None) -> dict:
     """
-    LLM-based edge validation via causal_graph_refiner.
+    LLM-based edge validation via CausalGraphRefiner + Ollama.
 
-    Placeholder that calls the existing CausalGraphRefiner.
-    Can be monkeypatched in tests.
+    Extracts edges from adjacency matrix, validates them with the local
+    LLM using domain knowledge about SES→cognition pathways, and returns
+    a validation report. Falls back silently if Ollama is unreachable.
     """
-    from src.llm.causal_graph_refiner import CausalGraphRefiner
-    refiner = CausalGraphRefiner()
-    # For now, return the adjacency matrix unchanged
-    # Full integration would pass edges through refiner.refine_causal_graph()
-    logger.info("LLM graph refinement called (pass-through)")
-    return adj_matrix
+    from src.llm.causal_graph_refiner import CausalGraphRefiner, CausalEdge
+
+    discovered_edges = []
+    for i, src in enumerate(variable_names):
+        for j, tgt in enumerate(variable_names):
+            if i != j and adj_matrix.iloc[i, j] != 0:
+                discovered_edges.append((src, tgt))
+
+    if not discovered_edges:
+        logger.info("No edges to refine.")
+        return {'adjacency': adj_matrix, 'llm_report': None}
+
+    if llm_client is None:
+        from src.llm.ollama_client import OllamaClient
+        llm_client = OllamaClient()
+
+    if not llm_client.is_available():
+        logger.warning("Ollama not available — skipping LLM graph refinement.")
+        return {'adjacency': adj_matrix, 'llm_report': None}
+
+    expert_edges = [
+        CausalEdge('ses_index', 'cognitive_score', 0.95, 'expert',
+                   'SES consistently predicts cognitive function (Farah 2018)',
+                   'Farah 2018; Marmot 2005'),
+        CausalEdge('ses_index', 'purpose_in_life', 0.85, 'expert',
+                   'Higher SES enables access to meaningful work and civic engagement',
+                   'Ryff 1989; Kim et al. 2014'),
+        CausalEdge('ses_index', 'sense_of_control', 0.88, 'expert',
+                   'Economic security supports perceived mastery over life outcomes',
+                   'Pearlin & Schooler 1978'),
+    ]
+
+    refiner = CausalGraphRefiner(llm_client, domain='cognitive_inequality')
+    dummy_df = data if data is not None else pd.DataFrame()
+
+    report = refiner.refine_causal_graph(
+        expert_edges=expert_edges,
+        discovered_edges=discovered_edges,
+        data=dummy_df,
+        protected_attr='ses_index',
+        outcome='cognitive_score',
+    )
+    logger.info(f"LLM graph refinement: {report['summary']}")
+    return {'adjacency': adj_matrix, 'llm_report': report}
 
 
 def run_pc_discovery(df: pd.DataFrame,
@@ -99,8 +139,9 @@ def discover_ses_cognition_paths(df: pd.DataFrame,
     }
 
     if use_llm:
-        adj = refine_graph(adj, variables)
-        result['adjacency'] = adj 
-        result['llm_refined'] = True
+        refined = refine_graph(adj, variables, data=df)
+        result['adjacency'] = refined['adjacency']
+        result['llm_report'] = refined.get('llm_report')
+        result['llm_refined'] = refined.get('llm_report') is not None
 
     return result
