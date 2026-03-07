@@ -406,6 +406,43 @@ class CognitiveInequalityPipeline:
         self.results['longitudinal'] = result
         return result
 
+    # ------------------------------------------------------------------
+    # Phase 8: Moderation / subgroup analysis
+    # ------------------------------------------------------------------
+
+    def run_moderation(self, dataset_name: str = 'midus_mr2') -> Dict:
+        """Sex and age-cohort moderation of the SES→cognition indirect effects."""
+        from src.analysis.moderation_analysis import (
+            run_interaction_model, run_subgroup_mediation,
+        )
+
+        df = self.datasets.get(dataset_name)
+        if df is None:
+            df = self.load_data(dataset_name)
+        mediators = [m for m in MR2_MEDIATORS if m in df.columns]
+
+        logger.info("=" * 70)
+        logger.info("MODERATION ANALYSIS — SEX AND AGE COHORT")
+        logger.info("=" * 70)
+
+        results = {}
+        for moderator in ['female', 'age_cohort']:
+            logger.info(f"\n  Moderator: {moderator}")
+
+            interaction = run_interaction_model(df, moderator=moderator)
+            logger.info(f"    Interaction β={interaction['interaction_coef']:.4f} "
+                        f"p={interaction['interaction_pvalue']:.4f}")
+
+            subgroup = run_subgroup_mediation(df, moderator=moderator,
+                                              mediators=mediators, n_boot=500)
+            results[moderator] = {
+                'interaction': interaction,
+                'subgroup': subgroup,
+            }
+
+        self.results['moderation'] = results
+        return results
+
     def run_full_pipeline(self, dataset_name: str = 'midus_mr2',
                           n_bootstrap: int = 1000) -> Dict:
         """Run all five analysis stages in sequence."""
@@ -422,6 +459,7 @@ class CognitiveInequalityPipeline:
         self.run_counterfactual(dataset_name)
         self.run_sensitivity(dataset_name)
         self.run_longitudinal()
+        self.run_moderation(dataset_name)
 
         # Save summary results
         self._save_results()
