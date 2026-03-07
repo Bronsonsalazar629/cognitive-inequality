@@ -1,7 +1,7 @@
 # Pipeline Enhancements Design — 2026-03-06
 
-**Goal:** Bring the cognitive inequality pipeline to top-journal submission standard by adding
-covariate adjustment, longitudinal validation, moderation analysis, and publication-quality figures.
+**Goal:** Add covariate adjustment, longitudinal validation, moderation analysis, and
+publication-quality figures to the cognitive inequality pipeline.
 
 **Architecture:** Option A — layered additions to the existing pipeline. Each enhancement is an
 independent phase with its own module, testable in isolation, and mapped to a methods subsection.
