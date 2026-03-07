@@ -361,6 +361,51 @@ class CognitiveInequalityPipeline:
         self.results['sensitivity'] = sensitivity
         return sensitivity
 
+    # ------------------------------------------------------------------
+    # Phase 7: Longitudinal validation (MR2 baseline → MIDUS 3)
+    # ------------------------------------------------------------------
+
+    def run_longitudinal(self) -> Dict:
+        """Test whether baseline SES predicts cognitive change to MIDUS 3."""
+        from src.data.data_loader_midus_m3 import load_midus_m3
+        from src.analysis.longitudinal_analysis import (
+            merge_baseline_followup, run_longitudinal_regression,
+        )
+
+        mr2_df = self.datasets.get('midus_mr2')
+        if mr2_df is None:
+            mr2_df = self.load_data('midus_mr2')
+
+        logger.info("=" * 70)
+        logger.info("LONGITUDINAL VALIDATION — MR2 BASELINE → MIDUS 3 FOLLOW-UP")
+        logger.info("=" * 70)
+
+        try:
+            m3_df = load_midus_m3()
+        except FileNotFoundError as e:
+            logger.warning(f"  MIDUS 3 files not found — skipping longitudinal: {e}")
+            return {}
+
+        panel = merge_baseline_followup(mr2_df, m3_df)
+
+        if panel.empty:
+            logger.warning(
+                "  No overlapping participants between MR2 and M3 — "
+                "skipping longitudinal regression."
+            )
+            return {}
+
+        result = run_longitudinal_regression(panel)
+
+        logger.info(f"  N panel: {result['n']}")
+        logger.info(f"  SES → cognitive_change: β={result['ses_coef']:.4f} "
+                    f"[{result['ses_ci_lower']:.4f}, {result['ses_ci_upper']:.4f}] "
+                    f"p={result['ses_pvalue']:.4f}")
+        logger.info(f"  R²={result['r2']:.3f}")
+
+        self.results['longitudinal'] = result
+        return result
+
     def run_full_pipeline(self, dataset_name: str = 'midus_mr2',
                           n_bootstrap: int = 1000) -> Dict:
         """Run all five analysis stages in sequence."""
@@ -376,6 +421,7 @@ class CognitiveInequalityPipeline:
         self.run_prediction(dataset_name)
         self.run_counterfactual(dataset_name)
         self.run_sensitivity(dataset_name)
+        self.run_longitudinal()
 
         # Save summary results
         self._save_results()

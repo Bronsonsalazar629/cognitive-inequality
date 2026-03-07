@@ -16,7 +16,11 @@ def merge_baseline_followup(mr2_df: pd.DataFrame, m3_df: pd.DataFrame) -> pd.Dat
     Computes cognitive_change = cognitive_score_m3 - cognitive_score (both z-scored).
     Returns merged panel with baseline SES, covariates, and change score.
     """
-    panel = mr2_df.merge(m3_df[['M2ID', 'cognitive_score_m3']], on='M2ID', how='inner')
+    # MR2 uses 'MRID' for the cross-wave participant ID; M3 uses 'M2ID'.
+    # They are the same identifier — align before merging.
+    mr2_key = 'M2ID' if 'M2ID' in mr2_df.columns else 'MRID'
+    mr2_merge = mr2_df.rename(columns={mr2_key: 'M2ID'}) if mr2_key == 'MRID' else mr2_df
+    panel = mr2_merge.merge(m3_df[['M2ID', 'cognitive_score_m3']], on='M2ID', how='inner')
     panel['cognitive_change'] = panel['cognitive_score_m3'] - panel['cognitive_score']
     logger.info(f"Panel N={len(panel)}, cognitive_change mean={panel['cognitive_change'].mean():.3f}")
     return panel
