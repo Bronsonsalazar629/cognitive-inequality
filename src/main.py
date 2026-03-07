@@ -461,6 +461,20 @@ class CognitiveInequalityPipeline:
         self.run_longitudinal()
         self.run_moderation(dataset_name)
 
+        # Generate publication figures
+        logger.info("=" * 70)
+        logger.info("GENERATING PUBLICATION FIGURES")
+        logger.info("=" * 70)
+        from src.visualization.figure_summary import generate_all_figures
+        self.results['_datasets'] = self.datasets
+        _mediators = [m for m in MR2_MEDIATORS if m in self.datasets.get(dataset_name, pd.DataFrame()).columns]
+        figure_paths = generate_all_figures(
+            self.results,
+            mediators=_mediators,
+            out_dir=Path('results/figures'),
+        )
+        logger.info(f"  Figures saved: {[str(p) for p in figure_paths.values()]}")
+
         # Save summary results
         self._save_results()
         logger.info("\nPIPELINE COMPLETE — results saved to results/")

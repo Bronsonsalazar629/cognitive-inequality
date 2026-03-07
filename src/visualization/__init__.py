@@ -1,3 +1,4 @@
 from .figure_mediation import plot_mediation_forest
 from .figure_longitudinal import plot_longitudinal_scatter
 from .figure_moderation import plot_moderation_comparison
+from .figure_summary import generate_all_figures
