@@ -216,7 +216,7 @@ class CognitiveInequalityPipeline:
         for m in mediators:
             try:
                 bk = baron_kenny_mediation(df, x='ses_index', m=m, y='cognitive_score',
-                                           weights=weights)
+                                           covariates=['RB1PRAGE', 'female'], weights=weights)
                 bk_results[m] = bk
                 logger.info(f"\n  [{m}]")
                 logger.info(f"    a (SES→mediator):       {bk.a:.4f}")
@@ -232,7 +232,8 @@ class CognitiveInequalityPipeline:
         logger.info(f"\n  Bootstrap CIs ({n_bootstrap} iterations):")
         boot_results = analyze_all_mediators(
             df, x='ses_index', y='cognitive_score',
-            mediators=mediators, weights=weights, n_boot=n_bootstrap,
+            mediators=mediators, covariates=['RB1PRAGE', 'female'],
+            weights=weights, n_boot=n_bootstrap,
         )
         significant = get_significant_mediators(boot_results)
 

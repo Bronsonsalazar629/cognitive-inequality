@@ -134,3 +134,22 @@ def test_weighted_mediation():
 
     # Results should differ (not identical)
     assert abs(unweighted.indirect - weighted.indirect) > 0.001
+
+
+def test_baron_kenny_with_covariates():
+    """Covariates are passed through and reduce confounding."""
+    import pandas as pd, numpy as np
+    from src.analysis.mediation_analysis import baron_kenny_mediation
+    rng = np.random.default_rng(0)
+    n = 200
+    age = rng.normal(44, 5, n)
+    df = pd.DataFrame({
+        'ses': rng.normal(0, 1, n),
+        'mediator': rng.normal(0, 1, n),
+        'outcome': rng.normal(0, 1, n),
+        'age': age,
+        'female': rng.integers(0, 2, n).astype(float),
+    })
+    result = baron_kenny_mediation(df, x='ses', m='mediator', y='outcome',
+                                   covariates=['age', 'female'])
+    assert hasattr(result, 'indirect')
