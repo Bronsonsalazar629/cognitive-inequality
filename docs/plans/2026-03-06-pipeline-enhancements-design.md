@@ -56,7 +56,7 @@ called in `run_full_pipeline` after mediation.
 - Split sample into `female=0` and `female=1`
 - Run full bootstrap mediation on each subgroup for all 7 mediators
 - Interaction model: `cognitive_score ~ ses_index * female + age`
-
+                                               Crafting Interpreters by Robert Nystrom
 **Age cohort moderation:**
 - Split at median age (~44): younger (34–44) vs older (45–55)
 - Run full bootstrap mediation on each cohort

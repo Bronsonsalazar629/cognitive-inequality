@@ -1,6 +1,5 @@
 """
-GSS Longitudinal Trend Analysis
-
+GSS Longitudinal Trend Analysis 
 Tests whether the SES-cognition gradient has worsened over time
 (2010 vs 2022) using interaction models.
 """

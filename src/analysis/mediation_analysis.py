@@ -1,6 +1,5 @@
 """
 Baron & Kenny Mediation Analysis with Bootstrap CIs
-
 Implements multi-mediator mediation analysis for decomposing the
 SES -> Cognitive Function pathway into direct and indirect effects
 through available mediators per dataset.

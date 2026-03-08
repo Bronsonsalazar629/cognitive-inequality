@@ -13,7 +13,7 @@ def test_create_brfss_ses_index():
         'INCOME2': [1, 4, 8],   # 1=<$10K, 8=>=75K
         'EDUCA': [1, 3, 6],     # 1=Never, 6=College grad
     })
-    result = create_ses_index(df)
+ = create_ses_index(df)
     assert 'ses_index' in result.columns
     assert result['ses_index'].iloc[0] < result['ses_index'].iloc[2]
     assert result['ses_index'].min() >= 0.0

@@ -3,7 +3,7 @@
 Investigates causal pathways from socioeconomic inequality to cognitive decline
 in young adults (25-45) using NHANES, BRFSS, and GSS public health datasets.
 
-## Quick Start
+## Start
 
 ```bash
 cd cognitive-inequality-research
@@ -23,23 +23,11 @@ python -m src.main pipeline
 
 ## Datasets
 
-| Dataset | N (ages 25-45) | Cognitive Measure | Primary Use |
-|---------|---------------|-------------------|-------------|
-| NHANES 2013-2014 | ~2,500 | DSST + CERAD (validated) | Mediation analysis |
-| BRFSS 2022 | ~100,000 | Self-reported difficulty | Validation |
-| GSS 2010-2022 | ~4,000 | Vocabulary test | Longitudinal trends |
+- NHANES 2013-2014 (Mediation analysis)
 
-## Architecture
+- BRFSS 2022 (Validation)
 
-```
-src/
-├── data/        # Data loaders (NHANES, BRFSS, GSS) + harmonization
-├── analysis/    # Mediation, causal discovery, prediction model
-├── llm/         # 4-tier LLM validation (DeepSeek)
-├── simulation/  # Counterfactual intervention simulator
-├── visualization/  # Publication-ready figures
-└── utils/       # Bootstrap, survey weights, E-values
-```
+- GSS 2010-2022 (Longitudinal Trends)
 
 ## License
 
